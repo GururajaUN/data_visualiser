@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- CR16: nothing may leave the browser. No network requests, no external scripts, no inline script handlers.
+     'unsafe-eval' is needed only to run the config/*.js files from the picked data folder. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; media-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Tracker</title>
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/print.css" media="print">
+</head>
+<body>
+<input type="file" id="folder" webkitdirectory directory multiple hidden>
+
+<aside id="side">
+  <div class="brand"><span class="mark" id="brand-mark">◆</span><div><b id="brand-name">Tracker</b><span id="brand-sub"></span></div></div>
+  <nav id="nav">
+    <span class="nav-h nomv">Trainer nominations</span>
+    <a class="nomv" href="#/nom" data-exact>Overview</a>
+    <a class="nomv localonly" href="#/nom/present">Presentation</a>
+    <a class="nomv" href="#/nom/map">Map</a>
+    <a class="nomv" href="#/nom/followups">Follow-ups <span id="nom-flag-badge" class="badge warn"></span></a>
+    <a class="nomv" href="#/nom/people">People</a>
+    <a class="nomv" href="#/nom/tot">TOT status</a>
+    <a class="nomv" href="#/nom/issues">Checks <span id="nom-issue-badge" class="badge bad"></span></a>
+    <a class="nomv" href="#/nom/exports">Exports</a>
+    <span class="nav-sep nomv trkv"></span>
+    <span class="nav-h trkv">Batch tracker</span>
+    <a class="trkv" href="#/" data-exact>Overview</a>
+    <a class="trkv" href="#/centres">Centres</a>
+    <a class="trkv" href="#/jobroles">Job roles</a>
+    <a class="trkv" href="#/batches">Batches</a>
+    <a class="trkv" href="#/trainers">Trainers</a>
+    <a class="trkv" href="#/attention">Needs attention <span id="flag-badge" class="badge bad"></span></a>
+    <a class="trkv" href="#/issues">Data issues <span id="issue-badge" class="badge"></span></a>
+    <a class="trkv" href="#/exports">SIDH exports</a>
+    <a class="trkv" href="#/sources">Sources</a>
+  </nav>
+  <div class="side-foot">Runs locally. Nothing is uploaded.</div>
+</aside>
+
+<div id="main">
+  <div id="top">
+    <div class="demo-tag">DEMO DATA — synthetic, for review only</div>
+    <span class="grow"></span>
+    <label class="asof-pick">Status as of <select id="asof"></select></label>
+    <button class="btn ghost" data-pick title="Load the project folder again"><span id="folder-name">Folder</span> ↻</button>
+    <button class="btn ghost" id="xl" title="Download every table on this page as one Excel file">⤓ Excel</button>
+    <button class="btn" id="print">Print / PDF</button>
+    <button class="btn ghost icon" id="theme" title="Toggle dark mode">◐</button>
+  </div>
+
+  <div id="print-head"></div>
+  <main id="view"></main>
+
+  <section id="landing">
+    <div class="land">
+      <button class="btn big" data-pick>Load project folder</button>
+      <p id="progress" class="dim"></p>
+    </div>
+  </section>
+</div>
+
+<script src="config/schema.js"></script>
+<script src="config/sidh.js"></script>
+<script src="config/karnataka-map.js"></script>
+<script src="js/xlsx-lite.js"></script>
+<script src="js/ingest.js"></script>
+<script src="js/validate.js"></script>
+<script src="js/model.js"></script>
+<script src="js/views.js"></script>
+<script src="js/table-export.js"></script>
+<script src="js/export-sidh.js"></script>
+<script src="js/nom-model.js"></script>
+<script src="js/nom-export.js"></script>
+<script src="js/report.js"></script>
+<script src="js/nom-views.js"></script>
+<script src="js/nom-map.js"></script>
+<script src="js/nom-present.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
