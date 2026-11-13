@@ -12,7 +12,7 @@
   function classify(name, folder) {
     const S = RC.SCHEMA;
     if (RC.NOM) {
-      const T = { decisions: 'nomDecisions', plan: 'nomPlan', nominations: 'nomList', tot: 'nomTot' };
+      const T = { decisions: 'nomDecisions', plan: 'nomPlan', nominations: 'nomList', tot: 'nomTot', totBatch: 'nomTotBatch' };
       for (const [k, f] of Object.entries(RC.NOM.files)) if (new RegExp(f.pattern, 'i').test(name)) return { type: T[k], dateKey: null, idHint: null, folderOk: true, nom: true };
     }
     for (const [type, f] of Object.entries(S.files)) {

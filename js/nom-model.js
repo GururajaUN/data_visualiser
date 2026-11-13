@@ -149,6 +149,25 @@
     });
   }
 
+  /* CR17 — TOT assessment batches */
+  function readTotBatch(file, issues) {
+    const C = RC.NOM.totBatch; if (!file || !C) return [];
+    let s = null; for (const n of C.sheet) { const k = Object.keys(file.sheets).find((x) => norm(x) === norm(n)); if (k) { s = { name: k, sh: file.sheets[k] }; break; } }
+    if (!s) { const k = Object.keys(file.sheets)[0]; s = k ? { name: k, sh: file.sheets[k] } : null; }
+    if (!s) return [];
+    const where = { file: file.name, sheet: s.name };
+    const idx = colMap(s.sh.header, C.cols, issues, where);
+    const inL = (v, l) => l.includes(norm(v));
+    return s.sh.rows.filter((r) => txt(cell(r, idx, 'batch')) || txt(cell(r, idx, 'name'))).map((r) => {
+      const g = (k) => cell(r, idx, k); const mm = cleanMobile(g('mobile')); const q = qpCode(g('qp')); const tr = txt(g('tr')).toUpperCase(); const res = txt(g('result'));
+      const result = !res ? null : inL(res, C.passValues) ? 'Pass' : inL(res, C.failValues) ? 'Fail' : inL(res, C.absentValues) ? 'Absent' : null;
+      if (res && !result) issues.push({ level: 'warn', ...where, row: r.excelRow, field: 'Result', msg: `"${res}" not understood — use Pass, Fail or Absent` });
+      const dt = g('date');
+      return { batch: txt(g('batch')), date: dt instanceof Date ? dt : null, name: txt(g('name')), mobile: mm.ok ? mm.m : null, mobileRaw: mm.raw, tr: /^TR\d+$/.test(tr) ? tr : null,
+        qpRaw: txt(g('qp')), qp: q.qp, code: q.code, result, src: { file: file.name, sheet: s.name, row: r.excelRow }, person: null, how: null };
+    });
+  }
+
   function readDecisions(file, issues) {
     const D = RC.NOM.decisions; const out = { people: new Map(), centres: new Map() };
     if (!file) return out;
@@ -195,16 +214,17 @@
     if (!RC.NOM || !RC.NOM.files) return null;
     const issues = [];
     const pick = (t) => files.filter((f) => f.type === t).sort((a, b) => b.lastModified - a.lastModified);
-    const plans = pick('nomPlan'), lists = pick('nomList'), decs = pick('nomDecisions'), tots = pick('nomTot');
+    const plans = pick('nomPlan'), lists = pick('nomList'), decs = pick('nomDecisions'), tots = pick('nomTot'), tbs = pick('nomTotBatch');
     if (!plans.length || !lists.length) return null;
-    const planF = plans[0], listF = lists[0], decF = decs[0] || null, totF = tots[0] || null;
-    for (const [arr, l] of [[plans, 'plan'], [lists, 'nominations'], [decs, 'decisions'], [tots, 'TOT request']]) if (arr.length > 1) issues.push({ level: 'info', file: '(folder)', msg: `${arr.length} ${l} files found; using the most recently modified: ${arr[0].name}` });
+    const planF = plans[0], listF = lists[0], decF = decs[0] || null, totF = tots[0] || null, tbF = tbs[0] || null;
+    for (const [arr, l] of [[plans, 'plan'], [lists, 'nominations'], [decs, 'decisions'], [tots, 'TOT request'], [tbs, 'TOT batch']]) if (arr.length > 1) issues.push({ level: 'info', file: '(folder)', msg: `${arr.length} ${l} files found; using the most recently modified: ${arr[0].name}` });
 
     const centresArr = readPlan(planF, issues);
     const noms = readMapped(listF, issues);
     const details = readDetail(listF, issues);
     const D = readDecisions(decF, issues);
     const totRows = readTot(totF, issues);
+    const tbRows = readTotBatch(tbF, issues);
     const C = new Map(centresArr.map((c) => [c.tc, c]));
     const R = RC.NOM.rules;
 
@@ -254,6 +274,13 @@
     const byTR = new Map(); for (const p of people) for (const t of p.trs) if (!byTR.has(t)) byTR.set(t, p);
     for (const p of people) if (p.tr && !byTR.has(p.tr)) byTR.set(p.tr, p);
     const byName = new Map(); for (const p of people) for (const n of p.names) { const k = norm(n); if (!byName.has(k)) byName.set(k, []); if (!byName.get(k).includes(p)) byName.get(k).push(p); }
+    const matchP = (t) => {
+      let p = null, how = null;
+      if (t.mobile && (p = byMob.get(t.mobile) || byDetMob.get(t.mobile))) how = 'mobile';
+      else if (t.tr && (p = byTR.get(t.tr) || people.find((x) => x.trPortal === t.tr))) how = 'TR ID';
+      else { const l = byName.get(norm(t.name)) || []; if (l.length === 1) { p = l[0]; how = 'name'; } }
+      return [p, how];
+    };
     for (const t of totRows) {
       let p = null, how = null;
       if (t.mobile && (p = byMob.get(t.mobile) || byDetMob.get(t.mobile))) how = 'mobile';
@@ -270,6 +297,9 @@
       if (trs.length > 1) p.trPortalMulti = trs;
     }
     const totOrphans = totRows.filter((t) => !t.person);
+    for (const p of people) p.totBatches = [];
+    for (const b of tbRows) { const [p, how] = matchP(b); if (p) { b.person = p; b.how = how; p.totBatches.push(b); } }
+    for (const b of tbRows.filter((x) => !x.person)) issues.push({ level: 'warn', file: b.src.file, sheet: b.src.sheet, row: b.src.row, msg: `TOT batch ${b.batch}: ${b.name} (${b.tr || 'no TR ID'}${b.mobile ? ', ' + b.mobile : ''}) — not found in the nominations` });
     for (const t of totOrphans) issues.push({ level: 'warn', file: t.src.file, sheet: t.src.sheet, row: t.src.row, msg: `TOT request from ${t.name} (${t.tr || 'no TR ID'}${t.mobile ? ', ' + t.mobile : ''}) — not found in the nominations` });
     for (const d of D.people.values()) if (!d.used) issues.push({ level: 'warn', file: decF.name, sheet: 'People', row: d.row, msg: `PersonKey "${d.key}" not found in the current nominations; decision not applied` });
 
@@ -319,10 +349,18 @@
       p.totWrong = p.totReqs.length > 0 && counted && !p.totReqOk;
       p.totNotCounted = p.totReqs.length > 0 && !counted;
       p.totExtra = p.totReqOk ? p.totReqs.filter((t) => t.code !== p.course) : [];
+      // CR17 — batches: latest batch for the counted course wins
+      const myB = p.totBatches.filter((b) => counted && b.code === p.course).sort((a, b) => (a.date || 0) - (b.date || 0));
+      p.totBatch = myB.length ? myB[myB.length - 1] : null;
+      p.totBatchOther = p.totBatches.filter((b) => !(counted && b.code === p.course));
+      const fromBatch = p.totBatch ? (p.totBatch.result === 'Pass' ? 'Completed' : p.totBatch.result === 'Fail' ? 'Failed' : p.totBatch.result === 'Absent' ? 'Absent' : 'Scheduled') : null;
       const fromReq = p.totReqOk ? 'Training requested' : p.totWrong ? 'Requested - wrong course' : p.totNotCounted ? 'Requested - not counted' : null;
-      if (fromReq && !(p.dec && p.dec.tot && rank(p.dec.tot) > rank('Training requested'))) p.tot = fromReq;
+      const computed = fromBatch || fromReq;
+      if (computed) p.tot = computed;
+      if (p.dec && p.dec.tot && ['Scheduled', 'Completed', 'Failed', 'Absent'].includes(p.dec.tot) && (!computed || !fromBatch)) p.tot = p.dec.tot;
       p.totDone = p.tot === 'Completed';
-      p.totAsked = p.totDone || p.tot === 'Scheduled' || p.tot === 'Training requested';
+      p.totSched = counted && (p.tot === 'Scheduled' || p.totDone);
+      p.totAsked = counted && (p.totDone || p.tot === 'Scheduled' || p.tot === 'Training requested' || p.tot === 'Failed' || p.tot === 'Absent' || p.totReqOk);
       p.totReqDate = p.totReqs.reduce((m, t) => (t.requested && (!m || t.requested < m) ? t.requested : m), null);
     }
 
@@ -353,6 +391,9 @@
       if (p.totNotCounted) F(p, 'TOT_NOT_COUNTED', 'med', `TOT requested for ${p.totReqs.map(cn).join(', ')} but this person is ${p.status === 'Rejected' ? 'rejected' : p.status.toLowerCase()} (${p.why})`);
       { const t = p.totReqs.find((x) => x.how !== 'name' && x.mobile && p.mobile && x.mobile !== p.mobile); if (t) F(p, 'TOT_MOBILE_DIFF', 'med', `TOT portal mobile ${t.mobile} differs from nominations ${p.mobile} (matched on ${t.how})`); }
       if (p.totReqs.some((t) => t.how === 'name')) { const t = p.totReqs.find((x) => x.how === 'name'); F(p, 'TOT_NAME_MATCH', 'med', `TOT request "${t.name}" (${t.tr || 'no TR'}${t.mobileRaw ? ', mobile ' + t.mobileRaw : ', no mobile'}) matched by name only — confirm it is the same person`); }
+      if (p.totBatchOther.length) F(p, 'TOT_BATCH_MISMATCH', 'high', `In TOT batch ${p.totBatchOther.map((b) => b.batch + ' (' + (b.qp || b.qpRaw) + ')').join(', ')} but ${p.status === 'Required' ? 'counted on ' + courseOf(p.course).short : p.status.toLowerCase()}`);
+      if (p.totBatch && !p.totBatch.result && p.totBatch.date && p.totBatch.date < today) F(p, 'TOT_RESULT_PENDING', 'med', `TOT assessment on ${p.totBatch.date.toDateString().slice(4)} (batch ${p.totBatch.batch}) — result not recorded`);
+      if (p.tot === 'Failed' || p.tot === 'Absent') F(p, 'TOT_NOT_CLEARED', 'high', `TOT ${p.tot === 'Failed' ? 'failed' : 'absent'} in batch ${p.totBatch ? p.totBatch.batch : ''} — needs a new TOT slot`);
       if (!p.tr) F(p, 'NO_TR', 'high', p.status === 'Required' ? 'Counted trainer has no TR ID (Skill India trainer ID) yet' : 'No TR ID (Skill India trainer ID) yet');
       if (!d) F(p, 'NO_DETAIL', 'med', 'No matching row in All Nominations (no DOB / qualification / experience)');
       else {
@@ -385,6 +426,7 @@
       c.withTR = c.requiredPeople.filter((p) => p.tr).length;
       c.tot = c.requiredPeople.filter((p) => p.totDone).length;
       c.totReq = c.requiredPeople.filter((p) => p.totAsked).length;
+      c.totSched = c.requiredPeople.filter((p) => p.totSched).length;
       c.totWrong = c.people.filter((p) => p.totWrong).length;
       c.flagCount = c.people.reduce((s, p) => s + p.flags.filter((f) => f.sev === 'high').length, 0);
       c.state = c.rows === 0 ? 'None' : c.gap === 0 ? 'Covered' : 'Short';
@@ -416,6 +458,13 @@
       notAllocated: people.filter((p) => p.flags.some((f) => f.code === 'NOT_ALLOCATED')).length,
       withTR: people.filter((p) => p.status === 'Required' && p.tr).length, tot: people.filter((p) => p.status === 'Required' && p.totDone).length,
       totReq: people.filter((p) => p.status === 'Required' && p.totAsked).length,
+      totSched: people.filter((p) => p.status === 'Required' && p.totSched).length,
+      totReqCentres: new Set(people.filter((p) => p.status === 'Required' && p.totAsked && p.centre).map((p) => p.centre.tc)).size,
+      totSchedCentres: new Set(people.filter((p) => p.status === 'Required' && p.totSched && p.centre).map((p) => p.centre.tc)).size,
+      totNotYet: people.filter((p) => p.status === 'Required' && !p.totAsked).length,
+      totNotYetNoTR: people.filter((p) => p.status === 'Required' && !p.totAsked && !p.tr).length,
+      totNotYetWrong: people.filter((p) => p.status === 'Required' && !p.totAsked && p.totWrong).length,
+      totBatchRows: tbRows.length, totBatchOrphans: tbRows.filter((b) => !b.person).length,
       totWrong: people.filter((p) => p.totWrong).length, totNotCounted: people.filter((p) => p.totNotCounted).length,
       totRows: totRows.length, totOrphans: totOrphans.length, trMismatch: people.filter((p) => p.trMismatch).length, trFromPortal: people.filter((p) => p.trSrc === 'portal' && !p.trNom).length,
       inspected: centresArr.filter((c) => /^inspected/i.test(c.inspection)).length,
@@ -434,7 +483,7 @@
       o.gap = o.req - o.filled;
       o.trainers = people.filter((p) => p.status === 'Required' && p.course === k);
       o.backups = people.filter((p) => p.status === 'Backup' && p.course === k);
-      o.withTR = o.trainers.filter((p) => p.tr).length; o.tot = o.trainers.filter((p) => p.totDone).length; o.totReq = o.trainers.filter((p) => p.totAsked).length; o.totWrong = o.trainers.filter((p) => p.totWrong).length;
+      o.withTR = o.trainers.filter((p) => p.tr).length; o.tot = o.trainers.filter((p) => p.totDone).length; o.totReq = o.trainers.filter((p) => p.totAsked).length; o.totSched = o.trainers.filter((p) => p.totSched).length; o.totWrong = o.trainers.filter((p) => p.totWrong).length;
       o.pool = people.filter((p) => p.status === 'Rejected' && p.codes.includes(k) && p.centre && !p.centre.courses[k]);
       o.shortCentres = o.rows.filter((x) => x.b.gap > 0).sort((a, b) => b.b.gap - a.b.gap || a.c.label.localeCompare(b.c.label));
       o.caafPending = o.rows.filter((x) => !x.c.caafDone).length;
@@ -499,7 +548,11 @@
     return { slots, ladder, stuck, bands, sequencing, firstStart, planFirstStart, agreedStart: agreed, milestones,
       centres: centresArr, people, noms, m, issues, by: { centre: C, person: P },
       asOf: nomDate(listF.name) || new Date(listF.lastModified.toDateString()),
-      sources: { plan: planF, nominations: listF, decisions: decF, tot: totF }, totRows, totOrphans, decMap: D.people,
+      sources: { plan: planF, nominations: listF, decisions: decF, tot: totF, totBatch: tbF }, totRows, totOrphans, tbRows,
+      totWaves: Object.values(tbRows.reduce((acc, b) => { const k = b.batch; (acc[k] = acc[k] || { batch: k, date: b.date, codes: new Set(), qps: new Set(), rows: [] }).rows.push(b); if (b.code) acc[k].codes.add(b.code); if (b.qp) acc[k].qps.add(b.qp); if (b.date && (!acc[k].date || b.date < acc[k].date)) acc[k].date = b.date; return acc; }, {}))
+        .map((w) => ({ ...w, counted: w.rows.filter((b) => b.person && b.person.totBatch === b).length, tcs: new Set(w.rows.filter((b) => b.person && b.person.centre).map((b) => b.person.centre.tc)).size,
+          pass: w.rows.filter((b) => b.result === 'Pass').length, fail: w.rows.filter((b) => b.result === 'Fail' || b.result === 'Absent').length }))
+        .sort((a, b) => (a.date || 0) - (b.date || 0)), decMap: D.people,
     };
   }
 

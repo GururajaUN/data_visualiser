@@ -58,7 +58,7 @@
       <h1>${esc(DK().title || 'Trainer readiness')}</h1>
       <p class="cv-sub">${N.centres.length} GTTC centres in Karnataka · ${m.required} batches · ${num(m.required * S)} seats</p>
       <ul class="cv-list"><li>Data as of ${d(N.asOf)}</li><li>Prepared ${d(today)}</li><li>${esc(DK().startLabel || 'Planned batch start')} ${d(N.firstStart)}</li></ul>
-      <p class="cv-srcs">Sources: ${esc(N.sources.plan.name)}; ${esc(N.sources.nominations.name)}${N.sources.decisions ? '; ' + esc(N.sources.decisions.name) + ` (${m.decided} manual decisions)` : ''}${N.sources.tot ? '; ' + esc(N.sources.tot.name) : ''}</p>` });
+      <p class="cv-srcs">Sources: ${esc(N.sources.plan.name)}; ${esc(N.sources.nominations.name)}${N.sources.decisions ? '; ' + esc(N.sources.decisions.name) + ` (${m.decided} manual decisions)` : ''}${N.sources.tot ? '; ' + esc(N.sources.tot.name) : ''}${N.sources.totBatch ? '; ' + esc(N.sources.totBatch.name) : ''}</p>` });
 
     // 2 — headline
     const PH = { caaf: 'CAAF', insp: 'inspection', trainer: 'trainer mapping', tr: 'TR IDs', tot: 'TOT', students: 'student onboarding' };
@@ -88,7 +88,7 @@
       insp: `NSDC inspection due by ${dshort(ms.insp && ms.insp.dueDate)}; ${m.inspected} of ${m.centres} centres done`,
       trainer: `${m.gap} batches have no trainer yet (${B.partial.n + B.none.n} centres short); due ${dshort(ms.trainer && ms.trainer.dueDate)}`,
       tr: `${m.noTRcounted} mapped trainers need a TR ID; due ${dshort(ms.tr && ms.tr.dueDate)}`,
-      tot: `TOT planned for ${dshort(ms.tot && ms.tot.dueDate)}; ${m.totReq} of ${m.filled} mapped trainers requested${m.totWrong ? ` (${m.totWrong} for the wrong course)` : ''}; ${m.tot} completed`,
+      tot: `TOT planned for ${dshort(ms.tot && ms.tot.dueDate)}; ${m.totReq} of ${m.filled} mapped trainers requested${m.totWrong ? ` (${m.totWrong} for the wrong course)` : ''}; ${m.totSched} scheduled; ${m.tot} completed`,
       students: `Student onboarding due by ${dshort(ms.students && ms.students.dueDate)}; ${m.onboarded} batches onboarded`,
     };
     const gates = N.ladder.filter((x) => x.id !== 'planned');
@@ -142,7 +142,7 @@
     const gapRows = [
       ['Trainer nominations', `${m.gap} batches at ${B.partial.n + B.none.n} centres`, ms.trainer, `Courses: ${bc.filter((b) => b.req > b.filled).map((b) => `${short(b.code)} ${b.req - b.filled}`).join(', ')}`],
       ['TR IDs', `${m.noTRcounted} mapped trainers`, ms.tr, `${N.centres.filter((c) => c.requiredPeople.some((p) => !p.tr)).length} centres affected`],
-      ['TOT', `${m.filled - m.totReq} mapped trainers yet to request (+ new nominees)`, ms.tot, `${m.totReq} requested${m.totWrong ? ` · ${m.totWrong} wrong course` : ''} · ${m.tot} completed`],
+      ['TOT', `${m.filled - m.totReq} mapped trainers yet to request (+ new nominees)`, ms.tot, `${m.totReq} requested · ${m.totSched} scheduled${m.totWrong ? ` · ${m.totWrong} wrong course` : ''} · ${m.tot} completed`],
       ['CAAF technical issue', `${caafPending.length} centres, ${caafBatches} batches`, ms.caaf, list(caafPending.map(nm))],
       ['NSDC inspection', `${m.centres - m.inspected} centres`, ms.insp, `${m.inspected} done`],
       ['Student onboarding', `${m.required - m.onboarded} batches (${num((m.required - m.onboarded) * S)} seats)`, ms.students, `can begin now for ${m.mobilisable} batches with a trainer + TR ID at CAAF-submitted centres`],
