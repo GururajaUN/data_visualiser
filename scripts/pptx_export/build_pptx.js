@@ -87,7 +87,7 @@ const strip = (h) => String(h).replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').re
     { text: `Prepared ${d(today)}`, options: { bullet: true, breakLine: true, bold: true } },
     { text: `${DK.startLabel || 'Planned batch start'} ${d(N.firstStart)}`, options: { bullet: true, breakLine: true, bold: true } },
     { text: ' ', options: { breakLine: true } },
-    { text: `Sources: ${N.sources.plan.name}; ${N.sources.nominations.name}${N.sources.decisions ? '; ' + N.sources.decisions.name : ''}${N.sources.tot ? '; ' + N.sources.tot.name : ''}`, options: { fontSize: 12 } },
+    { text: `Sources: ${N.sources.plan.name}; ${N.sources.nominations.name}${N.sources.decisions ? '; ' + N.sources.decisions.name : ''}${N.sources.tot ? '; ' + N.sources.tot.name : ''}${N.sources.totBatch ? '; ' + N.sources.totBatch.name : ''}`, options: { fontSize: 12 } },
   ], { placeholder: 'body' });
   if (logoPng) cv.addImage({ path: logoPng, x: (W - 3.064) / 2, y: 0.247, w: 3.064, h: 1.173, altText: 'Logo' });
   txt(cv, DK.org || '', { x: MX, y: 1.5, w: W - 2 * MX, h: 0.4, fontSize: 14, bold: true, color: HEX.accent6, align: 'center' });
@@ -128,7 +128,7 @@ const strip = (h) => String(h).replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').re
     insp: `NSDC inspection due by ${ds(ms.insp.dueDate)}; ${m.inspected}/${m.centres} centres done`,
     trainer: `${m.gap} batches have no trainer yet; due ${ds(ms.trainer.dueDate)}`,
     tr: `${m.noTRcounted} mapped trainers need a TR ID; due ${ds(ms.tr.dueDate)}`,
-    tot: `TOT on ${ds(ms.tot.dueDate)}; ${m.totReq} of ${m.filled} mapped trainers requested${m.totWrong ? ` (${m.totWrong} for the wrong course)` : ''}; ${m.tot} completed`,
+    tot: `TOT on ${ds(ms.tot.dueDate)}; ${m.totReq} of ${m.filled} mapped trainers requested${m.totWrong ? ` (${m.totWrong} for the wrong course)` : ''}; ${m.totSched} scheduled; ${m.tot} completed`,
     students: `Onboarding due ${ds(ms.students.dueDate)}; ${m.onboarded} batches onboarded`,
   };
   txt(s, gates.map((x, i) => [
@@ -194,7 +194,7 @@ const strip = (h) => String(h).replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').re
   const gapRows = [
     ['Trainer nominations', `${m.gap} batches at ${B.partial.n + B.none.n} centres`, ms.trainer, bc.filter((b) => b.req > b.filled).map((b) => `${short(b.code)} ${b.req - b.filled}`).join(', ')],
     ['TR IDs', `${m.noTRcounted} mapped trainers`, ms.tr, `${N.centres.filter((c) => c.requiredPeople.some((p) => !p.tr)).length} centres affected`],
-    ['TOT', `${m.filled - m.totReq} mapped trainers yet to request (+ new nominees)`, ms.tot, `${m.totReq} requested${m.totWrong ? ` · ${m.totWrong} wrong course` : ''} · ${m.tot} completed`],
+    ['TOT', `${m.filled - m.totReq} mapped trainers yet to request (+ new nominees)`, ms.tot, `${m.totReq} requested · ${m.totSched} scheduled${m.totWrong ? ` · ${m.totWrong} wrong course` : ''} · ${m.tot} completed`],
     ['CAAF technical issue', `${caafPending.length} centres, ${caafBatches} batches`, ms.caaf, caafPending.map(nm).join(', ')],
     ['NSDC inspection', `${m.centres - m.inspected} centres`, ms.insp, `${m.inspected} done`],
     ['Student onboarding', `${m.required - m.onboarded} batches (${num((m.required - m.onboarded) * S)} seats)`, ms.students, `can begin now for ${m.mobilisable} batches with trainer + TR ID at CAAF-submitted centres`],

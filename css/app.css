@@ -166,7 +166,7 @@ td .bar { width: 64px; margin-left: 6px; }
 .tbl th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink3); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; white-space: nowrap; user-select: none; }
 .tbl th:hover { color: var(--ink); }
 .tbl td { padding: 8px 10px; border-bottom: 1px solid var(--line2); vertical-align: top; }
-.tbl .n { text-align: right; white-space: nowrap; }
+.tbl .n { text-align: right; } .tbl td.n { white-space: nowrap; }
 .tbl tr[data-href] { cursor: pointer; }
 .tbl tbody tr:hover td { background: var(--panel2); }
 .empty { color: var(--ink3); text-align: center; padding: 18px !important; }
@@ -468,3 +468,13 @@ a.slot:hover { text-decoration: none; outline: 1px solid currentColor; }
 body.presenting .xl-bar { display: none; }
 #xl:disabled { opacity: .45; cursor: default; }
 .hosted .localonly { display: none !important; }
+/* CR17 — TOT statement tiles */
+.stiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stile { display: flex; flex-direction: column; justify-content: flex-start; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: var(--r); padding: 12px 14px; }
+.stile.info { border-left-color: #2f6f8f; } .stile.warn { border-left-color: #c98a1b; } .stile.good { border-left-color: #3c8a5a; }
+.stile .sl { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink3); }
+.stile .sb { font-size: 28px; font-weight: 700; margin: 4px 0; } .stile .sb small { font-size: 13px; font-weight: 400; color: var(--ink3); }
+.stile .st { font-size: 13px; line-height: 1.45; }
+ol.plan { margin: 0; padding-left: 20px; line-height: 1.7; }
+@media print { .stiles { grid-template-columns: repeat(2, 1fr); } }
+.mapwrap.stack { grid-template-columns: minmax(0, 1fr); } .mapwrap.stack > section:last-child { max-width: 720px; }
