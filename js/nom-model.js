@@ -127,6 +127,22 @@
     });
   }
 
+  /* CR19 — portal dates may arrive as text: 12/11/26, 14/11/2026, 14-11-2026 (day first) */
+  function toD(v) {
+    if (v instanceof Date) return v;
+    const m = String(v == null ? '' : v).trim().match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/);
+    if (!m) return null; let y = +m[3]; if (y < 100) y += 2000;
+    const d = new Date(y, +m[2] - 1, +m[1]); return d.getMonth() === +m[2] - 1 && d.getDate() === +m[1] ? d : null;
+  }
+  // Excel sometimes stores 12/11/26 as 11-Dec (month-first); swap day and month back
+  // TOT requests are recent: a date in the future or months back whose day/month swap lands in the last 60 days is the swap
+  function pastDate(d) {
+    if (!d || d.getDate() > 12) return d;
+    const now = new Date(), age = (x) => (now - x) / 864e5;
+    if (d <= now && age(d) <= 60) return d;
+    const s = new Date(d.getFullYear(), d.getDate() - 1, d.getMonth() + 1);
+    return age(s) >= 0 && age(s) <= 60 ? s : d;
+  }
   /* CR12 — TOT request tracker (portal dump) */
   function qpCode(raw) {
     const m = String(raw || '').match(/RSC\/?\s*Q?\s*(\d{4})/i); if (!m) return { qp: null, code: null };
@@ -145,7 +161,7 @@
       const tr = txt(g('tr')).toUpperCase();
       if (!/^TR\d+$/.test(tr)) issues.push({ level: 'warn', ...where, row: r.excelRow, field: 'Applicant ID', msg: `"${txt(g('tr'))}" is not a TR ID` });
       return { tr: /^TR\d+$/.test(tr) ? tr : null, name: txt(g('name')), email: txt(g('email')), mobile: mm.ok ? mm.m : null, mobileRaw: mm.raw, qpRaw: txt(g('qp')), qp: q.qp, code: q.code,
-        district: txt(g('district')), sub: txt(g('sub')), requested: rq instanceof Date ? rq : null, src: { file: file.name, sheet: s.name, row: r.excelRow }, person: null, how: null };
+        district: txt(g('district')), sub: txt(g('sub')), requested: pastDate(toD(rq)), status: txt(g('status')), cert: txt(g('cert')), src: { file: file.name, sheet: s.name, row: r.excelRow }, person: null, how: null };
     });
   }
 
@@ -162,8 +178,13 @@
       const g = (k) => cell(r, idx, k); const mm = cleanMobile(g('mobile')); const q = qpCode(g('qp')); const tr = txt(g('tr')).toUpperCase(); const res = txt(g('result'));
       const result = !res ? null : inL(res, C.passValues) ? 'Pass' : inL(res, C.failValues) ? 'Fail' : inL(res, C.absentValues) ? 'Absent' : null;
       if (res && !result) issues.push({ level: 'warn', ...where, row: r.excelRow, field: 'Result', msg: `"${res}" not understood — use Pass, Fail or Absent` });
-      const dt = g('date');
-      return { batch: txt(g('batch')), date: dt instanceof Date ? dt : null, name: txt(g('name')), mobile: mm.ok ? mm.m : null, mobileRaw: mm.raw, tr: /^TR\d+$/.test(tr) ? tr : null,
+      // CR20: a start/assessment date Excel stored month-first lands after the end date; swap day and month back
+      const sw = (d) => (d && d.getDate() <= 12 ? new Date(d.getFullYear(), d.getDate() - 1, d.getMonth() + 1) : d);
+      let st = toD(g('start')), en = toD(g('end')), dt = toD(g('date'));
+      if (st && en && st > en && sw(st) <= en) st = sw(st);
+      if (en && st && en < st && sw(en) >= st) en = sw(en);
+      if (dt && en && dt < (st || en) && sw(dt) >= (st || en)) dt = sw(dt);
+      return { batch: txt(g('batch')), date: dt, start: st, end: en, email: txt(g('email')), hasResult: idx.result != null, name: txt(g('name')), mobile: mm.ok ? mm.m : null, mobileRaw: mm.raw, tr: /^TR\d+$/.test(tr) ? tr : null,
         qpRaw: txt(g('qp')), qp: q.qp, code: q.code, result, src: { file: file.name, sheet: s.name, row: r.excelRow }, person: null, how: null };
     });
   }
@@ -223,6 +244,7 @@
     const noms = readMapped(listF, issues);
     const details = readDetail(listF, issues);
     const D = readDecisions(decF, issues);
+    if ((RC.NOM.configVersion || 0) < (RC.CONFIG_MIN || 0)) issues.unshift({ level: 'error', file: 'config/nominations.js', msg: `Config is out of date (version ${RC.NOM.configVersion || 'none'}, app needs ${RC.CONFIG_MIN}). Replace config/nominations.js with the latest one; until then some files may be ignored.` });
     const totRows = readTot(totF, issues);
     const tbRows = readTotBatch(tbF, issues);
     const C = new Map(centresArr.map((c) => [c.tc, c]));
@@ -392,7 +414,8 @@
       { const t = p.totReqs.find((x) => x.how !== 'name' && x.mobile && p.mobile && x.mobile !== p.mobile); if (t) F(p, 'TOT_MOBILE_DIFF', 'med', `TOT portal mobile ${t.mobile} differs from nominations ${p.mobile} (matched on ${t.how})`); }
       if (p.totReqs.some((t) => t.how === 'name')) { const t = p.totReqs.find((x) => x.how === 'name'); F(p, 'TOT_NAME_MATCH', 'med', `TOT request "${t.name}" (${t.tr || 'no TR'}${t.mobileRaw ? ', mobile ' + t.mobileRaw : ', no mobile'}) matched by name only — confirm it is the same person`); }
       if (p.totBatchOther.length) F(p, 'TOT_BATCH_MISMATCH', 'high', `In TOT batch ${p.totBatchOther.map((b) => b.batch + ' (' + (b.qp || b.qpRaw) + ')').join(', ')} but ${p.status === 'Required' ? 'counted on ' + courseOf(p.course).short : p.status.toLowerCase()}`);
-      if (p.totBatch && !p.totBatch.result && p.totBatch.date && p.totBatch.date < today) F(p, 'TOT_RESULT_PENDING', 'med', `TOT assessment on ${p.totBatch.date.toDateString().slice(4)} (batch ${p.totBatch.batch}) — result not recorded`);
+      if (p.totBatch && p.totReqs.some((t) => t.code === p.totBatch.code)) F(p, 'TOT_STALE_REQUEST', 'low', `Batched in ${p.totBatch.batch} but still listed in the yet-to-accept sheet — portal dump may be out of date`);
+      if (p.totBatch && p.totBatch.hasResult && !p.totBatch.result && p.totBatch.date && p.totBatch.date < today) F(p, 'TOT_RESULT_PENDING', 'med', `TOT assessment on ${p.totBatch.date.toDateString().slice(4)} (batch ${p.totBatch.batch}) — result not recorded`);
       if (p.tot === 'Failed' || p.tot === 'Absent') F(p, 'TOT_NOT_CLEARED', 'high', `TOT ${p.tot === 'Failed' ? 'failed' : 'absent'} in batch ${p.totBatch ? p.totBatch.batch : ''} — needs a new TOT slot`);
       if (!p.tr) F(p, 'NO_TR', 'high', p.status === 'Required' ? 'Counted trainer has no TR ID (Skill India trainer ID) yet' : 'No TR ID (Skill India trainer ID) yet');
       if (!d) F(p, 'NO_DETAIL', 'med', 'No matching row in All Nominations (no DOB / qualification / experience)');
@@ -549,7 +572,7 @@
       centres: centresArr, people, noms, m, issues, by: { centre: C, person: P },
       asOf: nomDate(listF.name) || new Date(listF.lastModified.toDateString()),
       sources: { plan: planF, nominations: listF, decisions: decF, tot: totF, totBatch: tbF }, totRows, totOrphans, tbRows,
-      totWaves: Object.values(tbRows.reduce((acc, b) => { const k = b.batch; (acc[k] = acc[k] || { batch: k, date: b.date, codes: new Set(), qps: new Set(), rows: [] }).rows.push(b); if (b.code) acc[k].codes.add(b.code); if (b.qp) acc[k].qps.add(b.qp); if (b.date && (!acc[k].date || b.date < acc[k].date)) acc[k].date = b.date; return acc; }, {}))
+      totWaves: Object.values(tbRows.reduce((acc, b) => { const k = b.batch; (acc[k] = acc[k] || { batch: k, date: b.date, start: b.start, end: b.end, codes: new Set(), qps: new Set(), rows: [] }).rows.push(b); if (b.code) acc[k].codes.add(b.code); if (b.qp) acc[k].qps.add(b.qp); if (b.date && (!acc[k].date || b.date < acc[k].date)) acc[k].date = b.date; return acc; }, {}))
         .map((w) => ({ ...w, counted: w.rows.filter((b) => b.person && b.person.totBatch === b).length, tcs: new Set(w.rows.filter((b) => b.person && b.person.centre).map((b) => b.person.centre.tc)).size,
           pass: w.rows.filter((b) => b.result === 'Pass').length, fail: w.rows.filter((b) => b.result === 'Fail' || b.result === 'Absent').length }))
         .sort((a, b) => (a.date || 0) - (b.date || 0)), decMap: D.people,

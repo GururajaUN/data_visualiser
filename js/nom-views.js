@@ -16,7 +16,7 @@
     UNASSIGNED: 'Centre not confirmed', SHARED_TR: 'Same TR ID on 2 people', NO_MOBILE: 'Mobile missing', BAD_MOBILE: 'Mobile invalid', MULTI_TC: 'Nominated by 2 TCs',
     DECISION_INVALID: 'Decision not applied', MULTI_COURSE: 'More than one course', NOT_ALLOCATED: 'Course not allocated', NONSTANDARD: 'Unknown course name',
     SAME_NAME: 'Possible duplicate', NO_DETAIL: 'No detail row', DOB_ODD: 'DOB implausible', OVER_REQ: 'Over requirement', NAME_VARIANTS: 'Name spelled differently',
-    TOT_BATCH_MISMATCH: 'In TOT batch for another course', TOT_RESULT_PENDING: 'TOT result not recorded', TOT_NOT_CLEARED: 'TOT failed / absent',
+    TOT_STALE_REQUEST: 'Batched but still in yet-to-accept', TOT_BATCH_MISMATCH: 'In TOT batch for another course', TOT_RESULT_PENDING: 'TOT result not recorded', TOT_NOT_CLEARED: 'TOT failed / absent',
     TR_MISMATCH: 'TR ID differs from portal', TR_FROM_PORTAL: 'TR ID only in portal', TR_PORTAL_MULTI: 'Two TR IDs in portal', TOT_WRONG_COURSE: 'TOT requested for wrong course',
     TOT_EXTRA: 'Extra TOT request', TOT_NOT_COUNTED: 'TOT requested, not counted', TOT_NAME_MATCH: 'TOT matched by name only', TOT_MOBILE_DIFF: 'Portal mobile differs',
     NO_TR: 'No TR ID', NO_QUAL: 'Qualification missing', OUT_OF_STATE: 'Outside Karnataka', TWO_MOBILES: 'Two mobiles given',
@@ -30,7 +30,8 @@
     return f.slice(0, max).map((x) => `<span class="pill t-${SEV[x.sev]}" title="${H().esc(x.text)}">${H().esc(FLAG_LABEL[x.code] || x.code)}</span>`).join(' ') + (f.length > max ? ` <span class="dim">+${f.length - max}</span>` : '');
   };
   const slot = (b) => `<a href="#/nom/course/${b.code}" class="slot ${b.gap ? 'short' : 'ok'}" title="${H().esc(short(b.code))}: ${b.filled} of ${b.req} counted${b.backup ? ', ' + b.backup + ' backup' : ''}">${b.code} <b>${b.filled}/${b.req}</b>${b.backup ? `<i>+${b.backup}</i>` : ''}</a>`;
-  const batchNote = (p) => (p.totBatch ? `<div class="dim">Batch ${H().esc(p.totBatch.batch)}${p.totBatch.date ? ' · ' + RC.fmt.date(p.totBatch.date) : ''}</div>` : '');
+  const span = (b) => (b.start && b.end ? (RC.fmt.date(b.start) === RC.fmt.date(b.end) ? RC.fmt.date(b.start) : `${RC.fmt.date(b.start)} – ${RC.fmt.date(b.end)}`) : b.start ? RC.fmt.date(b.start) : '');
+  const batchNote = (p) => (p.totBatch ? `<div class="dim">Batch ${H().esc(p.totBatch.batch)}${span(p.totBatch) ? ' · ' + span(p.totBatch) : ''}${p.totBatch.date ? ' · assessment ' + RC.fmt.date(p.totBatch.date) : ''}</div>` : '');
   const TOTC = { Absent: 'bad', Completed: 'good', 'Training requested': 'info', Scheduled: 'info', 'Requested - wrong course': 'bad', 'Requested - not counted': 'warn', Failed: 'bad' };
   const totPill = (p) => H().pill(p.tot, TOTC[p.tot] || 'mute');
   const totName = (t) => (t.code ? RC.Nom.courseOf(t.code).tot : t.qpRaw || '—');
@@ -191,7 +192,7 @@
     const flags = p.flags.length ? `<ul class="flags">${p.flags.map((f) => `<li class="sev-${f.sev === 'high' ? 'high' : f.sev === 'med' ? 'med' : 'low'}"><span class="fk">${h.esc(FLAG_LABEL[f.code] || f.code)}</span>${h.esc(f.text)}</li>`).join('')}</ul>` : '<p class="empty">No issues</p>';
     return h.head(p.name, `${p.centre ? centreLink(p.centre) : h.esc(p.srcLabel) + ' (centre not confirmed)'} · key <code>${h.esc(p.key)}</code>`, [['Nominations', '#/nom'], ...(p.centre ? [[p.centre.label, '#/nom/centre/' + p.centre.tc]] : []), [p.name]]) +
       `<div class="grid2">${h.section('Outcome', outcome)}${h.section('Flags', flags)}</div>` + h.section('Profile', info) + h.section(`Nominations (${p.noms.length})`, noms) +
-      (p.totBatches.length ? h.section(`TOT assessment batches (${p.totBatches.length})`, `<div class="tw"><table class="tbl"><thead><tr><th>Batch</th><th>Assessment date</th><th>QP</th><th>Result</th><th>Matched on</th><th>Source row</th></tr></thead><tbody>${p.totBatches.map((b) => `<tr><td>${h.esc(b.batch)}</td><td>${b.date ? RC.fmt.date(b.date) : '—'}</td><td>${h.esc(b.code ? RC.Nom.courseOf(b.code).tot : b.qpRaw)}</td><td>${b.result ? h.pill(b.result, b.result === 'Pass' ? 'good' : 'bad') : h.pill('Scheduled', 'info')}</td><td>${h.esc(b.how || '')}</td><td class="dim">${h.esc(b.src.sheet)} r${b.src.row}</td></tr>`).join('')}</tbody></table></div>`) : '') +
+      (p.totBatches.length ? h.section(`TOT assessment batches (${p.totBatches.length})`, `<div class="tw"><table class="tbl"><thead><tr><th>Batch</th><th>Batch dates</th><th>Assessment date</th><th>QP</th><th>Result</th><th>Matched on</th><th>Source row</th></tr></thead><tbody>${p.totBatches.map((b) => `<tr><td>${h.esc(b.batch)}</td><td>${span(b) || '—'}</td><td>${b.date ? RC.fmt.date(b.date) : '—'}</td><td>${h.esc(b.code ? RC.Nom.courseOf(b.code).tot : b.qpRaw)}</td><td>${b.result ? h.pill(b.result, b.result === 'Pass' ? 'good' : 'bad') : h.pill('Scheduled', 'info')}</td><td>${h.esc(b.how || '')}</td><td class="dim">${h.esc(b.src.sheet)} r${b.src.row}</td></tr>`).join('')}</tbody></table></div>`) : '') +
       h.section(`TOT requests (${p.totReqs.length})`, p.totReqs.length ? totReqTable(p.totReqs, p) : `<p class="empty">No TOT request in ${N.sources.tot ? h.esc(N.sources.tot.name) : 'the TOT portal file (not loaded)'}.</p>`);
   }
 
@@ -205,8 +206,8 @@
   }
   function totReqTable(reqs, p) {
     const h = H();
-    return `<div class="tw"><table class="tbl"><thead><tr><th>TR ID (portal)</th><th>TOT requested for</th><th>Requested on</th><th>District / sub-district</th><th>Matched on</th><th>Check</th><th>Source row</th></tr></thead><tbody>${reqs.map((t) => { const [v, c] = verdict(t, p || t.person);
-      return `<tr><td>${h.esc(t.tr || '—')}</td><td>${h.esc(totName(t))}</td><td>${t.requested ? RC.fmt.date(t.requested) : '—'}</td><td>${h.esc([t.district, t.sub].filter((x) => x && x !== 'N/A').join(' / ') || '—')}</td><td>${h.esc(t.how || '—')}</td><td>${h.pill(v, c)}</td><td class="dim">${h.esc(t.src.sheet)} r${t.src.row}</td></tr>`; }).join('')}</tbody></table></div>`;
+    return `<div class="tw"><table class="tbl"><thead><tr><th>TR ID (portal)</th><th>TOT requested for</th><th>Requested on</th><th>Portal status</th><th>District / sub-district</th><th>Matched on</th><th>Check</th><th>Source row</th></tr></thead><tbody>${reqs.map((t) => { const [v, c] = verdict(t, p || t.person);
+      return `<tr><td>${h.esc(t.tr || '—')}</td><td>${h.esc(totName(t))}</td><td>${t.requested ? RC.fmt.date(t.requested) : '—'}</td><td>${h.esc([t.status, t.cert ? 'certificate: ' + t.cert : ''].filter(Boolean).join(' · ') || '—')}</td><td>${h.esc([t.district, t.sub].filter((x) => x && x !== 'N/A').join(' / ') || '—')}</td><td>${h.esc(t.how || '—')}</td><td>${h.pill(v, c)}</td><td class="dim">${h.esc(t.src.sheet)} r${t.src.row}</td></tr>`; }).join('')}</tbody></table></div>`;
   }
   function fixes(r) {
     const p = r.p, out = [];
@@ -214,6 +215,7 @@
     const qp = (k) => RC.Nom.courseOf(k).qp;
     if (p.totBatchOther.length) out.push([`In batch ${p.totBatchOther.map((b) => b.batch).join(', ')} for ${p.totBatchOther.map((b) => b.qp || b.qpRaw).join(', ')} — move to ${qp(p.course)}`, true]);
     if (p.tot === 'Failed' || p.tot === 'Absent') out.push([`${p.tot} in batch ${p.totBatch ? p.totBatch.batch : ''} — book a new TOT slot`, true]);
+    if (p.flags.some((f) => f.code === 'TOT_STALE_REQUEST')) out.push(['Batched — ignore the yet-to-accept row (portal dump older)', false]);
     if (p.flags.some((f) => f.code === 'TOT_RESULT_PENDING')) out.push(['Record the assessment result in the batch file', false]);
     if (p.totWrong) out.push([`Raise TOT request for ${qp(p.course)} (${short(p.course)})`, true]);
     if (p.totExtra.length) out.push([`Withdraw extra request: ${p.totExtra.map((t) => t.qp || t.qpRaw).join(', ')}`, false]);
@@ -228,7 +230,7 @@
   }
   function schedTxt(list) {
     const by = {}; for (const p of list) if (p.totSched && p.totBatch) { const k = p.totBatch.batch; (by[k] = by[k] || { b: p.totBatch, n: 0 }).n++; }
-    const v = Object.values(by); return v.length ? v.map((x) => `${x.b.date ? RC.fmt.date(x.b.date) : 'date TBD'} · batch ${H().esc(x.b.batch)} (${x.n})`).join('<br>') : 'none yet';
+    const v = Object.values(by); return v.length ? v.map((x) => `${span(x.b) || (x.b.date ? RC.fmt.date(x.b.date) : 'date TBD')} · batch ${H().esc(x.b.batch)} (${x.n})`).join('<br>') : 'none yet';
   }
   function totView(q) {
     const N = RC.state.N, h = H(), m = N.m;
@@ -242,7 +244,7 @@
     }
     for (const t of N.totOrphans) rows.push({ t, cat: 'orphan', reqs: [t] });
     const trIssue = (r) => r.p && (r.p.trMismatch || (r.p.trSrc === 'portal' && !r.p.trNom));
-    const CAT = { done: ['Completed', 'good'], sched: ['Scheduled', 'info'], failed: ['Failed / absent', 'bad'], ok: ['Requested — not yet scheduled', 'good'], wrong: ['Wrong course', 'bad'], notreq: ['Counted — not requested yet', 'mute'], notcounted: ['Requested — not counted', 'warn'], orphan: ['Not in nominations', 'warn'], backup: ['Backup — not requested', 'mute'] };
+    const CAT = { done: ['Completed', 'good'], sched: ['Scheduled', 'info'], failed: ['Failed / absent', 'bad'], ok: ['Requested — awaiting acceptance', 'good'], wrong: ['Wrong course', 'bad'], notreq: ['Counted — not requested yet', 'mute'], notcounted: ['Requested — not counted', 'warn'], orphan: ['Not in nominations', 'warn'], backup: ['Backup — not requested', 'mute'] };
     const cnt = {}; rows.forEach((r) => (cnt[r.cat] = (cnt[r.cat] || 0) + 1)); const trN = rows.filter(trIssue).length;
     const f = q.cat || '';
     let list = f === 'tr' ? rows.filter(trIssue) : f ? rows.filter((r) => r.cat === f) : rows;
@@ -266,12 +268,12 @@
     const tile = (lab, big, txt, cls) => `<div class="stile ${cls || ''}"><div class="sl">${lab}</div><div class="sb">${big}</div><div class="st">${txt}</div></div>`;
     const waves = N.totWaves || [];
     const reqOnly = {}; for (const p of N.people) if (p.status === 'Required' && p.totAsked && !p.totSched && !p.totDone) reqOnly[p.course] = (reqOnly[p.course] || 0) + 1;
-    const planLines = [...waves.map((w) => `<li><b>${w.date ? RC.fmt.date(w.date) : 'Date TBD'}</b> — ${h.esc([...w.qps].join(', ') || '?')}${w.codes.size === 1 ? ` (${h.esc(short([...w.codes][0]))})` : ''} · batch ${h.esc(w.batch)} · ${w.rows.length} trainers, ${w.tcs} TCs${w.pass || w.fail ? ` · ${w.pass} passed, ${w.fail} failed/absent` : ''}</li>`),
-      ...RC.NOM.courses.filter((c) => reqOnly[c.code]).map((c) => `<li><b>Date TBD</b> — ${h.esc(c.qp)} (${h.esc(c.short)}) · ${reqOnly[c.code]} requested, not yet scheduled</li>`),
+    const planLines = [...waves.map((w) => `<li><b>${span(w) || (w.date ? RC.fmt.date(w.date) : 'Date TBD')}</b>${w.date ? ' (assessment ' + RC.fmt.date(w.date) + ')' : ''} — ${h.esc([...w.qps].join(', ') || '?')}${w.codes.size === 1 ? ` (${h.esc(short([...w.codes][0]))})` : ''} · batch ${h.esc(w.batch)} · ${w.rows.length} trainer${w.rows.length === 1 ? '' : 's'}, ${w.tcs} TC${w.tcs === 1 ? '' : 's'}${w.pass || w.fail ? ` · ${w.pass} passed, ${w.fail} failed/absent` : ''}</li>`),
+      ...RC.NOM.courses.filter((c) => reqOnly[c.code]).map((c) => `<li><b>Date TBD</b> — ${h.esc(c.qp)} (${h.esc(c.short)}) · ${reqOnly[c.code]} requested, awaiting acceptance</li>`),
       m.totNotYet ? `<li><b>Date TBD</b> — ${m.totNotYet} trainers yet to request, aligned as requests come in</li>` : ''].join('');
     const kp = `<div class="stiles">
       ${tile('TOT requests raised', `${m.totReq}<small> mapped trainers</small>`, `across ${m.totReqCentres} TCs · of ${m.filled} mapped`, 'info')}
-      ${tile('Assessment scheduled', `${m.totSched}<small> trainers</small>`, waves.length ? waves.map((w) => `${w.date ? RC.fmt.date(w.date) : 'date TBD'}: ${w.rows.length} trainers, ${h.esc([...w.qps].join(', '))} (batch ${h.esc(w.batch)}), across ${w.tcs} TCs`).join('<br>') : 'No batch file loaded yet', 'info')}
+      ${tile('Assessment scheduled', `${m.totSched}<small> trainers</small>`, waves.length ? waves.map((w) => `${w.date ? 'Assessment ' + RC.fmt.date(w.date) : 'date TBD'}: ${w.rows.length} trainer${w.rows.length === 1 ? '' : 's'}, ${h.esc([...w.qps].join(', '))} (batch ${h.esc(w.batch)}), across ${w.tcs} TC${w.tcs === 1 ? '' : 's'}`).join('<br>') : 'No batch file loaded yet', 'info')}
       ${tile('Yet to raise TOT request', `${m.totNotYet}<small> mapped trainers</small>`, `including ${m.totNotYetNoTR} who need a TR ID first${m.totNotYetWrong ? ` and ${m.totNotYetWrong} who requested the wrong course` : ''}. ${h.esc(note)}`, 'warn')}
       ${tile('TOT completed', `${m.tot}<small>/${m.filled}</small>`, m.trMismatch + m.trFromPortal ? `${m.trMismatch + m.trFromPortal} TR IDs to correct in nominations` : '', 'good')}
     </div>` + h.section('Training plan for ToT', `<ol class="plan">${planLines}</ol><p class="dim">TC-wise calendar below.</p>`);
@@ -280,7 +282,7 @@
       ['Assessment scheduled', m.totSched, waves.map((w) => `${w.date ? RC.fmt.date(w.date) : 'date TBD'}: ${w.rows.length} trainers, ${[...w.qps].join(', ')} (batch ${w.batch}), across ${w.tcs} TCs`).join('; ')],
       ['Yet to raise TOT request', m.totNotYet, `including ${m.totNotYetNoTR} who need a TR ID first${m.totNotYetWrong ? ` and ${m.totNotYetWrong} who requested the wrong course` : ''}. ${note}`],
       ['TOT completed', m.tot, `of ${m.filled} mapped`], [], ['Training plan for ToT', 'Date', 'Detail'],
-      ...waves.map((w, i) => [`Wave ${i + 1}`, w.date || 'TBD', `${[...w.qps].join(', ')}${w.codes.size === 1 ? ' (' + short([...w.codes][0]) + ')' : ''} · batch ${w.batch} · ${w.rows.length} trainers, ${w.tcs} TCs`]),
+      ...waves.map((w, i) => [`Wave ${i + 1}`, w.date || 'TBD', `${[...w.qps].join(', ')}${w.codes.size === 1 ? ' (' + short([...w.codes][0]) + ')' : ''} · batch ${w.batch} · ${w.rows.length} trainer${w.rows.length === 1 ? '' : 's'}, ${w.tcs} TC${w.tcs === 1 ? '' : 's'}`]),
       ...RC.NOM.courses.filter((c) => reqOnly[c.code]).map((c) => ['To schedule', 'TBD', `${c.qp} (${c.short}) · ${reqOnly[c.code]} requested, not yet scheduled`]),
       ...(m.totNotYet ? [['To schedule', 'TBD', `${m.totNotYet} trainers yet to request, aligned as requests come in`]] : [])]);
     // TC-wise calendar
@@ -291,7 +293,7 @@
       { k: 'm', l: 'Mapped', num: 1, v: (r) => r.ppl.length, h: (r) => r.ppl.length },
       { k: 'q', l: 'Requested', num: 1, v: (r) => r.ppl.filter((p) => p.totAsked).length, h: (r) => r.ppl.filter((p) => p.totAsked).length || '' },
       { k: 's', l: 'Scheduled (date · batch · trainers)', v: (r) => r.ppl.filter((p) => p.totSched).length, h: (r) => (r.ppl.some((p) => p.totSched) ? schedTxt(r.ppl) : '<span class="dim">—</span>') },
-      { k: 'w', l: 'Requested, date TBD', num: 1, v: (r) => r.ppl.filter((p) => p.totAsked && !p.totSched).length, h: (r) => r.ppl.filter((p) => p.totAsked && !p.totSched).length || '' },
+      { k: 'w', l: 'Requested, awaiting acceptance', num: 1, v: (r) => r.ppl.filter((p) => p.totAsked && !p.totSched).length, h: (r) => r.ppl.filter((p) => p.totAsked && !p.totSched).length || '' },
       { k: 'd', l: 'Completed', num: 1, v: (r) => r.c.tot, h: (r) => r.c.tot || '' },
       { k: 'n', l: 'Yet to request', num: 1, v: (r) => r.ppl.filter((p) => !p.totAsked).length, h: (r) => { const n = r.ppl.filter((p) => !p.totAsked).length; return n ? `<span class="c-warn">${n}</span>` : ''; } },
       { k: 't', l: 'No TR ID', num: 1, v: (r) => r.ppl.filter((p) => !p.tr).length, h: (r) => r.ppl.filter((p) => !p.tr).length || '' },
@@ -308,7 +310,7 @@
     if (c.state === 'None' && !c.unassignedHere.length) items.push({ sev: 'high', text: `No nominations received — ${c.req} trainer(s) needed (${c.byCourse.map((b) => `${b.code} ${b.req}`).join(', ')})` });
     else if (c.gap) items.push({ sev: 'high', text: `Need ${c.gap} more: ${c.byCourse.filter((b) => b.gap).map((b) => `${short(b.code)} ${b.gap}`).join(', ')}` + (c.unassignedHere.length ? ` — ${c.unassignedHere.length} unassigned ${c.unassignedHere[0].srcLabel} nominations may cover this` : '') });
     for (const p of c.people) {
-      for (const f of p.flags) if (['SHARED_TR', 'NO_MOBILE', 'BAD_MOBILE', 'SAME_NAME', 'NONSTANDARD', 'DOB_ODD', 'DECISION_INVALID', 'MULTI_TC', 'TR_MISMATCH', 'TR_FROM_PORTAL', 'TR_PORTAL_MULTI', 'TOT_WRONG_COURSE', 'TOT_EXTRA', 'TOT_NOT_COUNTED', 'TOT_NAME_MATCH', 'TOT_MOBILE_DIFF', 'TOT_BATCH_MISMATCH', 'TOT_RESULT_PENDING', 'TOT_NOT_CLEARED'].includes(f.code) || (f.code === 'NO_TR' && p.status === 'Required')) items.push({ sev: f.sev, p, text: f.code === 'NO_TR' ? 'Counted trainer — create TR ID before TOT' : f.text });
+      for (const f of p.flags) if (['SHARED_TR', 'NO_MOBILE', 'BAD_MOBILE', 'SAME_NAME', 'NONSTANDARD', 'DOB_ODD', 'DECISION_INVALID', 'MULTI_TC', 'TR_MISMATCH', 'TR_FROM_PORTAL', 'TR_PORTAL_MULTI', 'TOT_WRONG_COURSE', 'TOT_EXTRA', 'TOT_NOT_COUNTED', 'TOT_NAME_MATCH', 'TOT_MOBILE_DIFF', 'TOT_BATCH_MISMATCH', 'TOT_RESULT_PENDING', 'TOT_NOT_CLEARED', 'TOT_STALE_REQUEST'].includes(f.code) || (f.code === 'NO_TR' && p.status === 'Required')) items.push({ sev: f.sev, p, text: f.code === 'NO_TR' ? 'Counted trainer — create TR ID before TOT' : f.text });
       if (p.flags.some((f) => f.code === 'MULTI_COURSE') && !p.dec) items.push({ sev: 'med', p, text: `Nominated for ${p.codes.length + p.others.length} courses; ${p.status === 'Required' ? 'counted' : p.status.toLowerCase()} on ${short(p.course)} — confirm` });
       for (const s of p.suggest) items.push({ sev: 'low', p, text: s });
     }
@@ -356,7 +358,10 @@
   function exportsView() {
     const N = RC.state.N, h = H(), s = N.sources;
     const src = (f, l) => f ? `<tr><td>${l}</td><td><b>${h.esc(f.name)}</b><div class="dim">${h.esc(f.path)}</div></td><td>${RC.fmt.dt(f.lastModified)}</td></tr>` : `<tr><td>${l}</td><td class="dim" colspan="2">none — defaults applied</td></tr>`;
-    const ign = RC.state.catalog.ignored.length ? `<p class="dim">Ignored: ${RC.state.catalog.ignored.map((i) => h.esc(i.path)).join(', ')}</p>` : '';
+    // CR18: Excel lock files (~$) and config/ files are not "ignored" — config is loaded separately
+    const realIgn = RC.state.catalog.ignored.filter((i) => !/(^|\/)~\$/.test(i.path) && !/(^|\/)config\//i.test(i.path));
+    const cfg = (RC.state.config || {}).loaded || [];
+    const ign = (cfg.length ? `<p class="dim">Config loaded: ${cfg.map(h.esc).join(', ')}${RC.NOM && RC.NOM.configVersion ? ' (version ' + RC.NOM.configVersion + ')' : ''}</p>` : '') + (realIgn.length ? `<p class="dim">Ignored: ${realIgn.map((i) => h.esc(i.path)).join(', ')}</p>` : '');
     return h.head('Nomination exports', 'Both files are generated in the browser from the loaded workbooks.', [['Nominations', '#/nom'], ['Exports']]) +
       `<div class="exps">
         <div class="exp"><div><h3>Decisions file</h3><p class="dim">One row per person with the computed outcome, plus yellow columns for your calls: AssignTC (after phoning), AssignCourse, Decision (Required / Backup / Reject), TOTStatus, TOTDate, Notes. A Centres sheet holds inspection status.</p>
@@ -367,7 +372,7 @@
           <p><b>${N.m.filled}</b> counted · <b>${N.m.backup}</b> backup · <b>${N.m.rejected}</b> rejected · <b>${N.m.unassigned}</b> unassigned</p></div>
           <button class="btn" data-act="nom-clean">Download clean .xlsx</button></div>
       </div>` +
-      h.section('Sources used', `<table class="tbl"><thead><tr><th>Role</th><th>File</th><th>Modified</th></tr></thead><tbody>${src(s.plan, 'Plan of action')}${src(s.nominations, 'Nominations')}${src(s.decisions, 'Decisions')}${src(s.tot, 'TOT requests (portal)')}${src(s.totBatch, 'TOT batches')}</tbody></table>${ign}`);
+      h.section('Sources used', `<table class="tbl"><thead><tr><th>Role</th><th>File</th><th>Modified</th></tr></thead><tbody>${src(s.plan, 'Plan of action')}${src(s.nominations, 'Nominations')}${src(s.decisions, 'Decisions')}${src(s.tot, 'TOT requests — yet to accept')}${src(s.totBatch, 'TOT batches — scheduled')}</tbody></table>${ign}`);
   }
 
   /* ---------- Course (CR9) ---------- */

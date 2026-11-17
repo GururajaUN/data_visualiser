@@ -12,6 +12,7 @@
 
   /* CR14 — programme config lives in the data folder (config/*.js), not in the hosted app.
      Loaded each time a folder is picked; nominations.js first, then the rest alphabetically. */
+  RC.CONFIG_MIN = 19; // CR19: config/nominations.js must declare configVersion >= this
   RC.brand = () => Object.assign({ name: 'Tracker', sub: '', mark: '◆', title: 'Tracker', filePrefix: 'Tracker', courseWord: 'programme course' }, (RC.NOM && RC.NOM.brand) || {});
   function applyBrand() {
     const b = RC.brand();
@@ -33,6 +34,7 @@
     for (const f of Array.from(fileList).filter((f) => /\.(png|jpe?g|svg|gif)$/i.test(f.name) && /(^|\/)config\//i.test(rel(f)))) RC.state.assets[f.name.toLowerCase()] = URL.createObjectURL(f);
     applyBrand();
     if (errors.length) alert('Could not read the config file(s) in the data folder:\n' + errors.join('\n'));
+    else if (G.RC.NOM && (G.RC.NOM.configVersion || 0) < RC.CONFIG_MIN) alert(`The config in this folder is out of date (version ${G.RC.NOM.configVersion || 'none'}; the app needs ${RC.CONFIG_MIN}).\nReplace config/nominations.js with the latest one. Until then some files may be ignored.`);
     return loaded;
   }
 
