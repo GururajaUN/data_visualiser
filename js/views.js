@@ -398,7 +398,8 @@
       { k: 'u', l: 'Used', v: (f) => (used.has(f) ? 1 : 0), h: (f) => (used.has(f) ? 'Yes' : '<span class="dim">Other version</span>') },
       { k: 's', l: 'Sheets', v: (f) => Object.keys(f.sheets).length, h: (f) => Object.entries(f.sheets).filter(([n]) => n !== 'Guide' && n !== 'Meta').map(([n, s]) => `${esc(n)} <span class="dim">${s.rows.length}</span>`).join(' · ') },
     ];
-    const ign = st.catalog.ignored.length ? section('Ignored files', `<ul class="plain">${st.catalog.ignored.map((i) => `<li>${esc(i.path)} — <span class="dim">${esc(i.reason)}</span></li>`).join('')}</ul>`) : '';
+    const ignL = st.catalog.ignored.filter((i) => !/(^|\/)~\$/.test(i.path) && !/(^|\/)config\//i.test(i.path));
+    const ign = ignL.length ? section('Ignored files', `<ul class="plain">${ignL.map((i) => `<li>${esc(i.path)} — <span class="dim">${esc(i.reason)}</span></li>`).join('')}</ul>`) : '';
     return head('Sources', `Folder “${esc(st.catalog.root || '—')}” loaded ${F().dt(st.catalog.loadedAt)} · ${st.catalog.files.length} files`, [['Overview', '#/'], ['Sources']]) +
       section('Files', table('sources', cols, st.catalog.files, { limit: 50 })) + ign;
   };

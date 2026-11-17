@@ -131,7 +131,7 @@
     // 5 — map
     const north = (c) => c.latlon && c.latlon[0] >= 15.0;
     const gN = N.centres.filter(north).reduce((s, c) => s + c.gap, 0), gS = m.gap - gN;
-    out.push({ id: 'map', title: `Shortfall is spread across ${B.partial.n} centres: ${gN} batches in north Karnataka, ${gS} in the south`,
+    out.push({ id: 'map', title: `Shortfall is spread across ${B.partial.n} centres: ${gN} batch${gN === 1 ? "" : "es"} in north Karnataka, ${gS} in the south`,
       html: `<div class="mapslide"><div class="ms-map">${RC.NomMap.svg(N, { mode: 'staff', labels: true, noLegend: true })}</div>
         <div class="ms-side"><div class="mlegend v"><span><i class="lg-full"></i>Fully staffed <b>${B.full.n}</b></span><span><i class="lg-partial"></i>Short of trainers <b>${B.partial.n}</b></span>${B.none.n ? `<span><i class="lg-none"></i>No trainers <b>${B.none.n}</b></span>` : ''}<span><i class="lg-ring"></i>CAAF awaiting NSDC <b>${caafPending.length}</b></span></div>
           <p class="dim">Pin size and number = batches planned. Locations approximate (town level). North = above 15° N (roughly north of Hubballi–Hospet).</p>
@@ -207,7 +207,7 @@
     RC.state.viewTitle = 'Trainer readiness'; RC.state.crumbs = ['Presentation'];
     return `<div class="deck-bar"><button class="btn ghost" data-act="deck-exit">✕ Exit</button><span class="grow"></span>
       <button class="btn ghost" data-act="deck-prev">←</button><span class="deck-n">${ui.slide + 1} / ${n}</span><button class="btn ghost" data-act="deck-next">→</button>
-      <span class="grow"></span><button class="btn ghost" data-act="deck-xl" title="Download the tables in this deck as Excel">⤓ Excel</button><button class="btn" data-act="deck-print">Print / PDF (all slides)</button></div>
+      <span class="grow"></span><button class="btn ghost" data-act="deck-xl" title="Download the tables in this deck as Excel">⤓ Excel</button><button class="btn ghost" data-act="deck-pptx" title="Editable PowerPoint of all slides">⤓ PowerPoint</button><button class="btn" data-act="deck-print" title="Opens the print dialog: choose Save as PDF, margins None, background graphics on">⤓ PDF (print)</button></div>
       <div class="deck" id="deck">${deck}</div>`;
   }
   function fit() {
@@ -224,6 +224,7 @@
   ui.actions = Object.assign(ui.actions || {}, {
     'deck-next': () => go(1), 'deck-prev': () => go(-1), 'deck-exit': () => (location.hash = '#/nom'),
     'deck-xl': () => RC.TableExport.downloadPage(),
+    'deck-pptx': (el) => deckPptx(el),
     'deck-print': () => { const old = document.title; document.title = `${BR().filePrefix}_Trainer_readiness_${F().iso(RC.state.N.asOf)}`; window.print(); document.title = old; },
   });
   addEventListener('keydown', (e) => {
@@ -238,5 +239,36 @@
 
   const localOnly = () => RC.Views.h.head('Presentation', 'The presentation is available only when the tracker is opened from your own computer.', [['Nominations', '#/nom'], ['Presentation']]);
   RC.Views.addRoutes([[/^\/nom\/present$/, (q) => (RC.LOCAL ? present(q) : localOnly())]]);
+  /* CR20 — PowerPoint download, built in the browser (nothing leaves the computer) */
+  function toPng(src, w, h) {
+    return new Promise((res, rej) => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = w || im.naturalWidth; c.height = h || im.naturalHeight;
+      const x = c.getContext('2d'); x.drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/png').replace(/^data:/, '')); }; im.onerror = () => rej(new Error('image')); im.src = src; });
+  }
+  function mapPng() {
+    const svg = document.querySelector('#deck .ms-map svg'); if (!svg) return Promise.resolve(null);
+    const cl = svg.cloneNode(true); const src = [svg, ...svg.querySelectorAll('*')], dst = [cl, ...cl.querySelectorAll('*')];
+    const P = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray', 'stroke-linejoin', 'opacity', 'font-size', 'font-weight', 'font-family', 'text-anchor', 'paint-order', 'display'];
+    src.forEach((el, i) => { const cs = getComputedStyle(el); dst[i].setAttribute('style', P.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(';')); });
+    cl.querySelectorAll('title').forEach((t) => t.remove());
+    const vb = svg.viewBox.baseVal; cl.setAttribute('xmlns', 'http://www.w3.org/2000/svg'); cl.setAttribute('width', vb.width); cl.setAttribute('height', vb.height);
+    const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(cl)], { type: 'image/svg+xml' }));
+    const sc = 1923 / vb.height;
+    return toPng(url, Math.round(vb.width * sc), 1923).finally(() => URL.revokeObjectURL(url));
+  }
+  async function deckPptx(btn) {
+    const N = RC.state.N; if (!N || !window.PptxGenJS) { alert('PowerPoint builder not loaded.'); return; }
+    const old = btn ? btn.textContent : ''; if (btn) { btn.disabled = true; btn.textContent = 'Building…'; }
+    try {
+      const logoData = logoUrl() ? await toPng(logoUrl()).catch(() => null) : null;
+      const mapData = await mapPng().catch(() => null);
+      const { pres, THEME } = await RC.NomPptx.build({ N, PptxGenJS: window.PptxGenJS, logoData, mapData });
+      const buf = await pres.write({ outputType: 'arraybuffer' });
+      const blob = await RC.NomPptx.theme(window.JSZip, buf, THEME, 'blob');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${BR().filePrefix}_Trainer_readiness_${F().iso(N.asOf)}.pptx`;
+      document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+    } catch (e) { console.error(e); alert('Could not build the PowerPoint: ' + e.message); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+  }
+
   RC.NomPresent = { slides, asks, workingDaysLeft, ownerOf };
 })(window);
