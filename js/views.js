@@ -450,7 +450,9 @@
       if (s.dataset.scope === 'batchId') delete ui.exportScope.date;
       render();
     });
-    addEventListener('hashchange', () => { render(); scrollTo(0, 0); });
+    // CR21: keep the scroll position when only the query (filters, chips, modes) changes on the same page
+    let lastPath = (location.hash.slice(1) || '/').split('?')[0];
+    addEventListener('hashchange', () => { const path = (location.hash.slice(1) || '/').split('?')[0]; const y = scrollY; render(); scrollTo(0, path === lastPath ? y : 0); lastPath = path; });
   }
 
   RC.Views = { render, bind, esc, addRoutes, h: { esc, pill, flag, link, bar, pct, num, crumbs, head, kpi, section, stack, table, ratio } };

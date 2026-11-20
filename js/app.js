@@ -12,7 +12,7 @@
 
   /* CR14 — programme config lives in the data folder (config/*.js), not in the hosted app.
      Loaded each time a folder is picked; nominations.js first, then the rest alphabetically. */
-  RC.CONFIG_MIN = 19; // CR19: config/nominations.js must declare configVersion >= this
+  RC.CONFIG_MIN = 20; // CR19/CR23: config/nominations.js must declare configVersion >= this
   RC.brand = () => Object.assign({ name: 'Tracker', sub: '', mark: '◆', title: 'Tracker', filePrefix: 'Tracker', courseWord: 'programme course' }, (RC.NOM && RC.NOM.brand) || {});
   function applyBrand() {
     const b = RC.brand();

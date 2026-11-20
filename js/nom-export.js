@@ -13,21 +13,28 @@
   const coursesOf = (p) => [...p.codes.map(short), ...p.others].join('; ');
   const flagsOf = (p, sev) => p.flags.filter((f) => !sev || sev.includes(f.sev)).map((f) => f.text).join('; ');
 
-  function decisionsBook(N) {
+  function decisionsBook(N, lock) {
     const D = RC.NOM.decisions;
     const ed = (n) => Array(n).fill('edit');
     const ph = ['PersonKey', 'Name', 'Mobile', 'SourceCentre', 'SourceTC', 'NominatedCourses', 'TRID', 'ComputedStatus', 'ComputedCourse', 'Why', 'Flags',
-      'AssignTC', 'AssignCourse', 'Decision', 'TOTStatus', 'TOTDate', 'Notes'];
+      'AssignTC', 'AssignCourse', 'Decision', 'TOTStatus', 'TOTDate', 'Notes', 'Eligibility', 'Locked', 'LockedOn', 'ProposedEligibility', 'DocumentRemarks'];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const DV = { Required: 'Required', Backup: 'Backup', Rejected: 'Reject' };
     const people = N.people.slice().sort((a, b) => (a.tc || 'ZZ' + a.srcLabel).localeCompare(b.tc || 'ZZ' + b.srcLabel) || (a.course || '').localeCompare(b.course || '') || a.name.localeCompare(b.name));
     const rows = people.map((p) => {
       const d = p.dec || {};
+      // CR22: lock = freeze everyone's current outcome (only people with a centre and a status that can be decided)
+      const canLock = lock && p.tc && DV[p.status];
+      const tc = d.tc || (canLock ? p.tc : ''), crs = d.course ? courseName(d.course) : d.courseRaw || (canLock && p.course ? courseName(p.course) : '');
+      const dec = d.decision || d.decisionRaw || (canLock ? DV[p.status] : '');
+      const locked = canLock || d.locked ? 'Yes' : '', lockedOn = canLock ? today : d.lockedOn || '';
       return [p.key, p.name, p.mobile || p.mobileRaw || '', p.srcLabel, p.srcTC || '', coursesOf(p), p.tr || '', p.status, short(p.course), p.why, flagsOf(p, ['high', 'med']),
-        d.tc || '', d.course ? courseName(d.course) : d.courseRaw || '', d.decision || d.decisionRaw || '', d.tot || d.totRaw || '', d.totDate || '', d.notes || ''];
+        tc, crs, dec, d.tot || d.totRaw || '', d.totDate || '', d.notes || '', d.elig || '', locked, lockedOn, p.elig ? (p.elig.source === 'auto' ? p.elig.value : '') : '', p.elig ? p.elig.remark || '' : ''];
     });
     // keep decisions whose person is no longer in the nominations file
     const prev = N.decMap || null;
-    if (prev) for (const d of prev.values()) if (!N.by.person.has(d.key)) rows.push([d.key, '', '', '', '', '', '', 'Not in current nominations', '', 'Kept from earlier decisions file', '', d.tc || '', d.course ? courseName(d.course) : '', d.decision || '', d.tot || '', d.totDate || '', d.notes || '']);
-    const people_sheet = { name: D.peopleSheet, rows: [ph, ...rows], headStyles: [...Array(11).fill(null), ...ed(6)] };
+    if (prev) for (const d of prev.values()) if (!N.by.person.has(d.key)) rows.push([d.key, d.name || '', '', d.centre || '', d.tc || '', '', '', 'Not in current nominations', '', 'Kept from earlier decisions file', '', d.tc || '', d.course ? courseName(d.course) : '', d.decision || '', d.tot || '', d.totDate || '', d.notes || '', d.elig || '', d.locked ? 'Yes' : '', d.lockedOn || '', '', '']);
+    const people_sheet = { name: D.peopleSheet, rows: [ph, ...rows], headStyles: [...Array(11).fill(null), ...ed(9), null, null] };
     const ch = ['TCID', 'Centre', 'District', 'CAAFStatus', 'ApproxLatLong', 'BatchesPlanned', 'InspectionStatus', 'InspectionDate', 'BatchesOnboarded', 'Notes', 'Latitude', 'Longitude'];
     const ap = RC.NOM.centreCoords || {};
     const crow = N.centres.map((c) => [c.tc, c.label, c.district, c.caaf, ap[c.tc] ? ap[c.tc].join(', ') : '', c.req, c.inspection === D.defaults.inspection && !c.inspectionDate ? '' : c.inspection, c.inspectionDate || '', c.onboarded || '', c.inspectionNotes || '',
@@ -42,6 +49,8 @@
       ['TOTStatus', D.totValues.join(' / ') + ' (blank = ' + D.defaults.tot + ')'],
       ['TOTDate', 'Date TOT completed'],
       ['Notes', 'Free text; shown as the reason for a Reject'],
+      ['Eligibility', 'OK / Warn / Not OK — overrides the Eligibility column of the TOT workbook and the value proposed from remarks (ProposedEligibility, DocumentRemarks are for reference)'],
+      ['Locked / LockedOn', 'Yes = this person\'s Decision, AssignCourse and AssignTC are fixed; new files never change them. Written by "Lock allocation" on the Exports page.'],
       ['InspectionStatus', D.inspectionValues.join(' / ') + ' (Centres sheet; blank = ' + D.defaults.inspection + ')'],
       ['BatchesOnboarded', 'Centres sheet: number of this centre\'s batches whose students are onboarded (0 to BatchesPlanned). Feeds the Students onboarded gate.'],
       ['Latitude / Longitude', 'Centres sheet: exact map pin in decimal degrees (e.g. 12.9902, 77.5521), e.g. from the CAAF geo-tagged photo. Blank = approximate town-level pin (ApproxLatLong).'],
@@ -87,6 +96,7 @@
     const N = RC.state.N; if (!N) return;
     const d = RC.fmt.iso(new Date()), asof = RC.fmt.iso(N.asOf);
     if (kind === 'decisions') download(decisionsBook(N), `${RC.brand().filePrefix}_Decisions_${d}.xlsx`);
+    if (kind === 'lock') download(decisionsBook(N, true), `${RC.brand().filePrefix}_Decisions_${d}_locked.xlsx`);
     if (kind === 'clean') download(cleanBook(N), `${RC.brand().filePrefix}_Nominations_Clean_asof_${asof}.xlsx`);
   }
 
