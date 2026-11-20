@@ -477,4 +477,7 @@ body.presenting .xl-bar { display: none; }
 .stile .st { font-size: 13px; line-height: 1.45; }
 ol.plan { margin: 0; padding-left: 20px; line-height: 1.7; }
 @media print { .stiles { grid-template-columns: repeat(2, 1fr); } }
-.mapwrap.stack { grid-template-columns: minmax(0, 1fr); } .mapwrap.stack > section:last-child { max-width: 720px; }
+.mapwrap.stacked { grid-template-columns: minmax(0, 1fr); } .mapwrap.stacked > section:last-child { max-width: 720px; } /* CR21: was ".stack", which collided with the stacked-bar class (height 28px) */
+/* CR22 — lock banner */
+.lockbar { margin: -4px 0 16px; padding: 8px 12px; border-radius: var(--r); background: #fff6e6; border: 1px solid #f0d9a8; font-size: 13.5px; }
+.lockbar.on { background: #eef6f1; border-color: #c4dfcd; }

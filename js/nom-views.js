@@ -16,6 +16,7 @@
     UNASSIGNED: 'Centre not confirmed', SHARED_TR: 'Same TR ID on 2 people', NO_MOBILE: 'Mobile missing', BAD_MOBILE: 'Mobile invalid', MULTI_TC: 'Nominated by 2 TCs',
     DECISION_INVALID: 'Decision not applied', MULTI_COURSE: 'More than one course', NOT_ALLOCATED: 'Course not allocated', NONSTANDARD: 'Unknown course name',
     SAME_NAME: 'Possible duplicate', NO_DETAIL: 'No detail row', DOB_ODD: 'DOB implausible', OVER_REQ: 'Over requirement', NAME_VARIANTS: 'Name spelled differently',
+    ELIG_NOT_OK: 'Not eligible (documents)', ELIG_WARN: 'Document issue', TOT_ABSENT: 'Absent at TOT assessment', NEW_UNLOCKED: 'New since lock',
     TOT_STALE_REQUEST: 'Batched but still in yet-to-accept', TOT_BATCH_MISMATCH: 'In TOT batch for another course', TOT_RESULT_PENDING: 'TOT result not recorded', TOT_NOT_CLEARED: 'TOT failed / absent',
     TR_MISMATCH: 'TR ID differs from portal', TR_FROM_PORTAL: 'TR ID only in portal', TR_PORTAL_MULTI: 'Two TR IDs in portal', TOT_WRONG_COURSE: 'TOT requested for wrong course',
     TOT_EXTRA: 'Extra TOT request', TOT_NOT_COUNTED: 'TOT requested, not counted', TOT_NAME_MATCH: 'TOT matched by name only', TOT_MOBILE_DIFF: 'Portal mobile differs',
@@ -31,8 +32,12 @@
   };
   const slot = (b) => `<a href="#/nom/course/${b.code}" class="slot ${b.gap ? 'short' : 'ok'}" title="${H().esc(short(b.code))}: ${b.filled} of ${b.req} counted${b.backup ? ', ' + b.backup + ' backup' : ''}">${b.code} <b>${b.filled}/${b.req}</b>${b.backup ? `<i>+${b.backup}</i>` : ''}</a>`;
   const span = (b) => (b.start && b.end ? (RC.fmt.date(b.start) === RC.fmt.date(b.end) ? RC.fmt.date(b.start) : `${RC.fmt.date(b.start)} – ${RC.fmt.date(b.end)}`) : b.start ? RC.fmt.date(b.start) : '');
-  const batchNote = (p) => (p.totBatch ? `<div class="dim">Batch ${H().esc(p.totBatch.batch)}${span(p.totBatch) ? ' · ' + span(p.totBatch) : ''}${p.totBatch.date ? ' · assessment ' + RC.fmt.date(p.totBatch.date) : ''}</div>` : '');
-  const TOTC = { Absent: 'bad', Completed: 'good', 'Training requested': 'info', Scheduled: 'info', 'Requested - wrong course': 'bad', 'Requested - not counted': 'warn', Failed: 'bad' };
+  const batchNote = (p) => (p.totBatch ? `<div class="dim">Batch ${H().esc(p.totBatch.batch)}${span(p.totBatch) ? ' · ' + span(p.totBatch) : ''}${p.totBatch.date ? ' · assessment ' + RC.fmt.date(p.totBatch.date) : ''}${marks(p.totBatch) ? '<br>' + marks(p.totBatch) : ''}</div>` : '');
+  const ELC = { OK: 'good', Warn: 'warn', 'Not OK': 'bad', 'Not reviewed': 'mute' };
+  const eligPill = (p) => H().pill(p.elig.value + (p.elig.source === 'auto' ? ' (auto)' : ''), ELC[p.elig.value] || 'mute');
+  const eligCell = (p) => eligPill(p) + (p.elig.remark && p.elig.value !== 'OK' ? `<div class="dim">${H().esc(p.elig.remark)}</div>` : '');
+  const marks = (b) => (b && (b.domain != null || b.platform != null) ? `Domain ${b.domain ?? '—'} · Platform ${b.platform ?? '—'}` : '');
+  const TOTC = { Assessed: 'info', Absent: 'bad', Completed: 'good', 'Training requested': 'info', Scheduled: 'info', 'Requested - wrong course': 'bad', 'Requested - not counted': 'warn', Failed: 'bad' };
   const totPill = (p) => H().pill(p.tot, TOTC[p.tot] || 'mute');
   const totName = (t) => (t.code ? RC.Nom.courseOf(t.code).tot : t.qpRaw || '—');
   const trCell = (p) => { const h = H(); if (!p.tr) return '<span class="dim">—</span>'; return h.esc(p.tr) + (p.trMismatch ? `<div class="c-bad">nominations: ${h.esc(p.trNom)}</div>` : p.trSrc === 'portal' && !p.trNom ? '<div class="dim">from TOT portal</div>' : ''); };
@@ -64,8 +69,9 @@
       ${h.kpi('Unique people', h.num(m.unique), `from ${m.received} nominations · ${m.multiCourse} on 2+ courses`)}
       ${h.kpi('Waiting for a centre', m.unassigned, 'confirm TC by phone', null)}
       ${h.kpi('TOT', `${m.tot}<small>/${m.required}</small>`, `completed · <a href="#/nom/tot">${m.totReq} requested</a> · ${m.totSched} scheduled${m.totWrong ? ` · <a class="c-bad" href="#/nom/tot?cat=wrong">${m.totWrong} wrong course</a>` : ''} · ${m.withTR} counted have a TR ID`, h.ratio(m.tot, m.required), 'good')}
+      ${h.kpi('Counted & eligible (OK)', `${m.eligOK}<small>/${m.filled}</small>`, `<a href="#/nom/people?flag=ELIG_NOT_OK">${m.eligNot} not OK</a> · <a href="#/nom/people?flag=ELIG_WARN">${m.eligWarn} warn</a> · ${m.eligNR} not reviewed${m.eligAuto ? ` · ${m.eligAuto} auto from remarks` : ''}`, h.ratio(m.eligOK, m.filled), 'good')}
       ${h.kpi('Centres inspected', `${m.inspected}<small>/${m.centres}</small>`, 'NSDC inspection', h.ratio(m.inspected, m.centres), 'good')}
-    </div>`;
+    </div>` + lockBanner(N);
     const bc = Object.values(m.byCode);
     const courseTbl = `<div class="tw"><table class="tbl"><thead><tr><th>Course</th><th class="n">Required</th><th class="n">Counted</th><th class="n">Gap</th><th class="n">Backup</th><th class="n">Received</th></tr></thead><tbody>${bc.map((b) => `<tr data-href="#/nom/course/${b.code}"><td class="cname"><b>${h.esc(short(b.code))}</b><div class="dim">${b.centres} centre${b.centres > 1 ? 's' : ''}</div></td><td class="n">${b.req}</td><td class="n">${b.filled}</td><td class="n ${b.req - b.filled ? 'c-warn' : ''}">${b.req - b.filled}</td><td class="n">${b.backup}</td><td class="n">${b.received}</td></tr>`).join('')}</tbody></table></div>`;
     const fc = {};
@@ -88,6 +94,8 @@
       { k: 'b', l: 'Backup', num: 1, v: (c) => c.backup, h: (c) => c.backup || '' },
       { k: 'r', l: 'Rejected', num: 1, v: (c) => c.rejected, h: (c) => (c.rejected ? `<span class="c-bad">${c.rejected}</span>` : '') },
       { k: 'tr', l: 'TR ID', num: 1, v: (c) => c.withTR, h: (c) => (c.filled ? `${c.withTR}/${c.filled}` : '') },
+      { k: 'el', l: 'Eligible OK · warn · not OK', num: 1, v: (c) => c.eligOK, xl: [{ l: 'Eligible OK', v: (c) => c.eligOK }, { l: 'Eligibility warn', v: (c) => c.eligWarn }, { l: 'Not eligible', v: (c) => c.eligNot }, { l: 'Not reviewed', v: (c) => c.eligNR }],
+        h: (c) => (c.filled ? `${c.eligOK} · ${c.eligWarn ? `<span class="c-warn">${c.eligWarn}</span>` : 0} · ${c.eligNot ? `<b class="c-bad">${c.eligNot}</b>` : 0}` : '') },
       { k: 'tot', l: 'TOT requested · scheduled · completed', num: 1, v: (c) => c.totReq * 1e4 + c.totSched * 100 + c.tot,
         xl: [{ l: 'TOT requested', v: (c) => c.totReq }, { l: 'TOT scheduled', v: (c) => c.totSched }, { l: 'TOT completed', v: (c) => c.tot }],
         h: (c) => (c.filled ? `<span title="requested · scheduled · completed, of ${c.filled} counted">${c.totReq} · ${c.totSched} · ${c.tot}</span>` : '') },
@@ -114,8 +122,8 @@
       <div class="wide"><dt>Address</dt><dd>${h.esc(c.address || '')}</dd></div></dl>`;
     const kp = `<div class="kpis">${h.kpi('Counted', `${c.filled}<small>/${c.req}</small>`, c.gap ? `<b class="c-warn">gap ${c.gap}</b>` : 'requirement met', h.ratio(c.filled, c.req), c.gap ? 'warn' : 'good')}
       ${h.kpi('Received', c.rows, `${c.unique} unique people`)}${h.kpi('Backup', c.backup, 'beyond 1 per batch')}${h.kpi('Rejected', c.rejected, 'course not allocated / unknown')}
-      ${h.kpi('TR ID', `${c.withTR}<small>/${c.filled}</small>`, 'among counted')}${h.kpi('TOT requested', `${c.totReq}<small>/${c.filled}</small>`, c.totWrong ? `<b class="c-bad">${c.totWrong} wrong course</b>` : 'counted trainers', h.ratio(c.totReq, c.filled || 1), 'info')}${h.kpi('TOT scheduled', `${c.totSched}<small>/${c.filled}</small>`, schedTxt(c.requiredPeople), h.ratio(c.totSched, c.filled || 1), 'info')}${h.kpi('TOT completed', `${c.tot}<small>/${c.filled}</small>`, '', h.ratio(c.tot, c.filled || 1), 'good')}</div>`;
-    const slots = `<div class="tw"><table class="tbl"><thead><tr><th>Course</th><th class="n">Seats</th><th class="n">Req.</th><th class="n">Counted</th><th class="n">Gap</th><th class="n">Backup</th><th class="n">Rows</th><th class="n">People</th><th class="n">TOT requested</th><th class="n">TOT scheduled</th><th class="n">TOT completed</th></tr></thead><tbody>${c.byCourse.map((b) => { const tp = c.requiredPeople.filter((p) => p.course === b.code); return `<tr data-href="#/nom/course/${b.code}"><td class="cname"><b>${h.esc(short(b.code))}</b></td><td class="n">${b.target}</td><td class="n">${b.req}</td><td class="n">${b.filled}</td><td class="n ${b.gap ? 'c-warn' : ''}">${b.gap}</td><td class="n">${b.backup}</td><td class="n">${b.received}</td><td class="n">${b.unique}</td><td class="n">${tp.filter((p) => p.totAsked).length}</td><td class="n">${tp.filter((p) => p.totSched).length}</td><td class="n">${tp.filter((p) => p.totDone).length}</td></tr>`; }).join('')}</tbody></table></div>`;
+      ${h.kpi('TR ID', `${c.withTR}<small>/${c.filled}</small>`, 'among counted')}${h.kpi('TOT requested', `${c.totReq}<small>/${c.filled}</small>`, c.totWrong ? `<b class="c-bad">${c.totWrong} wrong course</b>` : 'counted trainers', h.ratio(c.totReq, c.filled || 1), 'info')}${h.kpi('TOT scheduled', `${c.totSched}<small>/${c.filled}</small>`, schedTxt(c.requiredPeople), h.ratio(c.totSched, c.filled || 1), 'info')}${h.kpi('TOT completed', `${c.tot}<small>/${c.filled}</small>`, c.totAssessed || c.totAbsent ? `${c.totAssessed} assessed · ${c.totAbsent} absent` : '', h.ratio(c.tot, c.filled || 1), 'good')}${h.kpi('Eligible (OK)', `${c.eligOK}<small>/${c.filled}</small>`, `${c.eligNot ? `<b class="c-bad">${c.eligNot} not OK</b> · ` : ''}${c.eligWarn} warn · ${c.eligNR} not reviewed`, h.ratio(c.eligOK, c.filled || 1), 'good')}</div>`
+    const slots = `<div class="tw"><table class="tbl"><thead><tr><th>Course</th><th class="n">Seats</th><th class="n">Req.</th><th class="n">Counted</th><th class="n">Gap</th><th class="n">Backup</th><th class="n">Rows</th><th class="n">People</th><th class="n">TOT requested</th><th class="n">TOT scheduled</th><th class="n">TOT completed</th><th class="n">Eligible OK</th></tr></thead><tbody>${c.byCourse.map((b) => { const tp = c.requiredPeople.filter((p) => p.course === b.code); return `<tr data-href="#/nom/course/${b.code}"><td class="cname"><b>${h.esc(short(b.code))}</b></td><td class="n">${b.target}</td><td class="n">${b.req}</td><td class="n">${b.filled}</td><td class="n ${b.gap ? 'c-warn' : ''}">${b.gap}</td><td class="n">${b.backup}</td><td class="n">${b.received}</td><td class="n">${b.unique}</td><td class="n">${tp.filter((p) => p.totAsked).length}</td><td class="n">${tp.filter((p) => p.totSched).length}</td><td class="n">${tp.filter((p) => p.totDone).length}</td><td class="n">${tp.filter((p) => p.elig.value === 'OK').length}</td></tr>`; }).join('')}</tbody></table></div>`;
     const un = c.unassignedHere.length ? h.section(`Unassigned nominations that may belong here (${c.unassignedHere.length})`,
       `<p class="note">These were grouped under "${h.esc(c.unassignedHere[0].srcLabel)}" without a TC. Possible centres: ${c.unassignedHere[0].candidates.map(centreLink).join(', ')}. Confirm by phone and enter AssignTC in the Decisions file.</p>` + peopleTable('c-un-' + tc, c.unassignedHere, { noCentre: true, addr: true })) : '';
     return h.head(c.label, `${c.tc} · ${h.esc(c.district)} · ${h.pill(c.state === 'None' ? 'No nominations' : c.state, CST[c.state])}`, [['Nominations', '#/nom'], [c.label]]) +
@@ -135,6 +143,7 @@
       { k: 'k', l: 'Course', v: (p) => p.course || '', h: (p) => (p.status === 'Required' || p.status === 'Backup' ? h.esc(short(p.course)) : '') },
       o.addr ? { k: 'a', l: 'Location / address (from nomination)', v: (p) => (p.detail ? p.detail.location + ' ' + p.detail.address : ''), h: (p) => (p.detail ? `${h.esc(p.detail.location || '')}<div class="dim">${h.esc((p.detail.address || '').slice(0, 90))}</div>` : '') } : null,
       { k: 'tr', l: 'TR ID', v: (p) => p.tr || '', h: trCell },
+      o.addr ? null : { k: 'el', l: 'Eligibility', v: (p) => ['Not OK', 'Warn', 'Not reviewed', 'OK'].indexOf(p.elig.value), xl: [{ l: 'Eligibility', v: (p) => p.elig.value }, { l: 'Eligibility source', v: (p) => p.elig.source || '' }, { l: 'Document remarks', v: (p) => p.elig.remark || '' }], h: eligCell },
       o.addr ? null : { k: 't', l: 'TOT', v: (p) => p.tot, h: (p) => totPill(p) + batchNote(p) + (p.totWrong ? `<div class="c-bad">${h.esc(p.totReqs.map(totName).join('; '))}</div>` : '') },
       { k: 'f', l: 'Flags', v: (p) => p.flags.filter((f) => f.sev === 'high').length * 10 + p.flags.filter((f) => f.sev === 'med').length, h: (p) => flagPills(p) },
     ].filter(Boolean);
@@ -181,18 +190,19 @@
       <div><dt>Qualification</dt><dd>${h.esc(d.qual || '—')}</dd></div>
       <div><dt>Experience (yrs)</dt><dd>Industry ${d.indExp ?? '—'} · Teaching ${d.teachExp ?? '—'} · Total ${d.totExp ?? '—'}</dd></div>
       <div><dt>State / location</dt><dd>${h.esc([d.state, d.location].filter(Boolean).join(' · ') || '—')}</dd></div>
+      <div><dt>Eligibility</dt><dd>${eligPill(p)}<div class="dim">${p.elig.source === 'auto' ? 'Proposed from the document remarks — confirm in the Eligibility column' : p.elig.source === 'sheet' ? 'From the Eligibility column' : p.elig.source === 'decision' ? 'From the Decisions file' : 'No document review yet'}</div>${p.elig.remark ? `<div>${h.esc(p.elig.remark)}</div>` : ''}</dd></div>
       <div><dt>TOT</dt><dd>${totPill(p)}${p.dec && p.dec.totDate ? ' ' + RC.fmt.date(p.dec.totDate) : ''}${(p.status === 'Required' || p.status === 'Backup') ? `<div class="dim">Needed: ${h.esc(RC.Nom.courseOf(p.course).tot)}</div>` : ''}</dd></div>
       <div class="wide"><dt>Address</dt><dd>${h.esc(d.address || '—')}</dd></div>
       ${d.remarks ? `<div class="wide"><dt>Remarks in source file</dt><dd>${h.esc(d.remarks)}</dd></div>` : ''}</dl>`;
     const outcome = `<div class="outcome"><div>${h.pill(p.status === 'Required' ? 'Counted to target' : p.status, ST[p.status])}${p.status === 'Required' || p.status === 'Backup' ? ` on <b>${h.esc(short(p.course))}</b>` : ''}${p.centre ? ` at ${centreLink(p.centre)}` : ''}</div><p>${h.esc(p.why)}</p>
-      ${p.dec ? `<p class="dim">Manual decision applied (Decisions file row ${p.dec.row})${p.dec.notes ? ': ' + h.esc(p.dec.notes) : ''}</p>` : ''}
+      ${p.dec && p.dec.locked ? `<p class="dim">🔒 Locked${p.dec.lockedOn ? ' on ' + RC.fmt.date(p.dec.lockedOn) : ''} — loading new files does not change this.</p>` : ''}${p.dec && !p.dec.locked ? `<p class="dim">Manual decision applied (Decisions file row ${p.dec.row})${p.dec.notes ? ': ' + h.esc(p.dec.notes) : ''}</p>` : ''}
       ${p.candidates && p.candidates.length ? `<p>Possible centres: ${p.candidates.map(centreLink).join(', ')}</p>` : ''}
       ${p.suggest.length ? `<ul class="plain">${p.suggest.map((s) => `<li>${h.esc(s)}</li>`).join('')}</ul>` : ''}</div>`;
     const noms = `<div class="tw"><table class="tbl"><thead><tr><th>Grouped under</th><th>TC</th><th>Course (as written)</th><th>TR ID</th><th>Source row</th></tr></thead><tbody>${p.noms.map((n) => `<tr><td>${h.esc(n.srcCentre)}${n.groupNote ? `<div class="dim">${h.esc(n.groupNote)}</div>` : ''}</td><td>${h.esc(n.tc || '—')}</td><td>${h.esc(n.courseRaw)}${n.code ? '' : ' <span class="pill t-warn">unknown</span>'}</td><td>${h.esc(n.tr || '—')}</td><td class="dim">${h.esc(n.src.sheet)} r${n.src.row}</td></tr>`).join('')}</tbody></table></div>`;
     const flags = p.flags.length ? `<ul class="flags">${p.flags.map((f) => `<li class="sev-${f.sev === 'high' ? 'high' : f.sev === 'med' ? 'med' : 'low'}"><span class="fk">${h.esc(FLAG_LABEL[f.code] || f.code)}</span>${h.esc(f.text)}</li>`).join('')}</ul>` : '<p class="empty">No issues</p>';
     return h.head(p.name, `${p.centre ? centreLink(p.centre) : h.esc(p.srcLabel) + ' (centre not confirmed)'} · key <code>${h.esc(p.key)}</code>`, [['Nominations', '#/nom'], ...(p.centre ? [[p.centre.label, '#/nom/centre/' + p.centre.tc]] : []), [p.name]]) +
       `<div class="grid2">${h.section('Outcome', outcome)}${h.section('Flags', flags)}</div>` + h.section('Profile', info) + h.section(`Nominations (${p.noms.length})`, noms) +
-      (p.totBatches.length ? h.section(`TOT assessment batches (${p.totBatches.length})`, `<div class="tw"><table class="tbl"><thead><tr><th>Batch</th><th>Batch dates</th><th>Assessment date</th><th>QP</th><th>Result</th><th>Matched on</th><th>Source row</th></tr></thead><tbody>${p.totBatches.map((b) => `<tr><td>${h.esc(b.batch)}</td><td>${span(b) || '—'}</td><td>${b.date ? RC.fmt.date(b.date) : '—'}</td><td>${h.esc(b.code ? RC.Nom.courseOf(b.code).tot : b.qpRaw)}</td><td>${b.result ? h.pill(b.result, b.result === 'Pass' ? 'good' : 'bad') : h.pill('Scheduled', 'info')}</td><td>${h.esc(b.how || '')}</td><td class="dim">${h.esc(b.src.sheet)} r${b.src.row}</td></tr>`).join('')}</tbody></table></div>`) : '') +
+      (p.totBatches.length ? h.section(`TOT assessment batches (${p.totBatches.length})`, `<div class="tw"><table class="tbl"><thead><tr><th>Batch</th><th>Batch dates</th><th>Assessment date</th><th>QP</th><th>Marks</th><th>Result</th><th>Matched on</th><th>Source row</th></tr></thead><tbody>${p.totBatches.map((b) => `<tr><td>${h.esc(b.batch)}</td><td>${span(b) || '—'}</td><td>${b.date ? RC.fmt.date(b.date) : '—'}</td><td>${h.esc(b.code ? RC.Nom.courseOf(b.code).tot : b.qpRaw)}</td><td>${h.esc(marks(b) || '—')}</td><td>${b.result ? h.pill(b.result, b.result === 'Pass' ? 'good' : 'bad') : b.domain === 'Absent' ? h.pill('Absent', 'bad') : marks(b) ? h.pill('Assessed', 'info') : h.pill('Scheduled', 'info')}</td><td>${h.esc(b.how || '')}</td><td class="dim">${h.esc(b.src.sheet)} r${b.src.row}</td></tr>`).join('')}</tbody></table></div>`) : '') +
       h.section(`TOT requests (${p.totReqs.length})`, p.totReqs.length ? totReqTable(p.totReqs, p) : `<p class="empty">No TOT request in ${N.sources.tot ? h.esc(N.sources.tot.name) : 'the TOT portal file (not loaded)'}.</p>`);
   }
 
@@ -214,6 +224,8 @@
     if (!p) return [['Not in nominations — confirm centre and course, or ignore', false]];
     const qp = (k) => RC.Nom.courseOf(k).qp;
     if (p.totBatchOther.length) out.push([`In batch ${p.totBatchOther.map((b) => b.batch).join(', ')} for ${p.totBatchOther.map((b) => b.qp || b.qpRaw).join(', ')} — move to ${qp(p.course)}`, true]);
+    if (p.elig.value === 'Not OK') out.push([`Not eligible: ${p.elig.remark || 'see review'} — replace or get approval`, true]);
+    else if (p.elig.value === 'Warn') out.push([`Re-upload documents: ${p.elig.remark || 'see review'}`, false]);
     if (p.tot === 'Failed' || p.tot === 'Absent') out.push([`${p.tot} in batch ${p.totBatch ? p.totBatch.batch : ''} — book a new TOT slot`, true]);
     if (p.flags.some((f) => f.code === 'TOT_STALE_REQUEST')) out.push(['Batched — ignore the yet-to-accept row (portal dump older)', false]);
     if (p.flags.some((f) => f.code === 'TOT_RESULT_PENDING')) out.push(['Record the assessment result in the batch file', false]);
@@ -239,12 +251,12 @@
     for (const p of N.people) {
       const counted = p.status === 'Required' || p.status === 'Backup';
       if (!counted && !p.totReqs.length) continue;
-      const cat = p.totBatchOther.length ? 'wrong' : (p.tot === 'Failed' || p.tot === 'Absent') ? 'failed' : p.totDone ? 'done' : p.totSched ? 'sched' : p.totWrong ? 'wrong' : p.totNotCounted ? 'notcounted' : p.totAsked || p.totReqOk ? 'ok' : p.status === 'Required' ? 'notreq' : 'backup';
+      const cat = p.totBatchOther.length ? 'wrong' : (p.tot === 'Failed' || p.tot === 'Absent') ? 'failed' : p.totDone ? 'done' : p.tot === 'Assessed' ? 'assessed' : p.totSched ? 'sched' : p.totWrong ? 'wrong' : p.totNotCounted ? 'notcounted' : p.totAsked || p.totReqOk ? 'ok' : p.status === 'Required' ? 'notreq' : 'backup';
       rows.push({ p, cat, reqs: p.totReqs });
     }
     for (const t of N.totOrphans) rows.push({ t, cat: 'orphan', reqs: [t] });
     const trIssue = (r) => r.p && (r.p.trMismatch || (r.p.trSrc === 'portal' && !r.p.trNom));
-    const CAT = { done: ['Completed', 'good'], sched: ['Scheduled', 'info'], failed: ['Failed / absent', 'bad'], ok: ['Requested — awaiting acceptance', 'good'], wrong: ['Wrong course', 'bad'], notreq: ['Counted — not requested yet', 'mute'], notcounted: ['Requested — not counted', 'warn'], orphan: ['Not in nominations', 'warn'], backup: ['Backup — not requested', 'mute'] };
+    const CAT = { done: ['Completed', 'good'], sched: ['Scheduled', 'info'], failed: ['Failed / absent', 'bad'], assessed: ['Assessed (marks)', 'info'], ok: ['Requested — awaiting acceptance', 'good'], wrong: ['Wrong course', 'bad'], notreq: ['Counted — not requested yet', 'mute'], notcounted: ['Requested — not counted', 'warn'], orphan: ['Not in nominations', 'warn'], backup: ['Backup — not requested', 'mute'] };
     const cnt = {}; rows.forEach((r) => (cnt[r.cat] = (cnt[r.cat] || 0) + 1)); const trN = rows.filter(trIssue).length;
     const f = q.cat || '';
     let list = f === 'tr' ? rows.filter(trIssue) : f ? rows.filter((r) => r.cat === f) : rows;
@@ -253,7 +265,7 @@
     const chip = (k, l, n) => `<a class="${f === k ? 'on' : ''}" href="#/nom/tot${k ? '?cat=' + k : ''}">${l} ${n}</a>`;
     const chips = `<div class="chips">${chip('', 'All', rows.length)}${Object.keys(CAT).filter((k) => cnt[k]).map((k) => chip(k, CAT[k][0], cnt[k])).join('')}${trN ? chip('tr', 'TR ID to correct in nominations', trN) : ''}</div>`;
     const tools = `<div class="ptools"><input id="totq" type="search" placeholder="Search name, mobile, TR ID, centre" value="${h.esc(ui.filter.totq || '')}"></div>`;
-    const ORDER = { failed: 0, wrong: 1, notcounted: 2, orphan: 3, notreq: 4, ok: 5, sched: 6, done: 7, backup: 8 };
+    const ORDER = { assessed: 6.5, failed: 0, wrong: 1, notcounted: 2, orphan: 3, notreq: 4, ok: 5, sched: 6, done: 7, backup: 8 };
     const cols = [
       { k: 'n', l: 'Name', xl: [{ l: 'Name', v: (r) => (r.p ? r.p.name : r.t.name) }, { l: 'Mobile', v: (r) => (r.p ? r.p.mobile || r.p.mobileRaw : r.t.mobile || r.t.mobileRaw) || '' }], v: (r) => (r.p ? r.p.name : r.t.name), h: (r) => (r.p ? `<b>${personLink(r.p)}</b><div class="dim">${h.esc(r.p.mobile || r.p.mobileRaw || 'no mobile')}</div>` : `<b>${h.esc(r.t.name)}</b><div class="dim">${h.esc(r.t.mobile || r.t.mobileRaw || 'no mobile')}</div>`) },
       { k: 'c', l: 'Centre', v: (r) => (r.p ? (r.p.centre ? r.p.centre.label : r.p.srcLabel) : 'zz'), h: (r) => (r.p ? (r.p.centre ? centreLink(r.p.centre) : h.esc(r.p.srcLabel)) : `<span class="dim">${h.esc([r.t.district, r.t.sub].filter((x) => x && x !== 'N/A').join(' / ') || '—')}</span>`) },
@@ -261,6 +273,7 @@
       { k: 'r', l: 'TOT requested for', v: (r) => r.reqs.map(totName).join(' '), h: (r) => (r.reqs.length ? r.reqs.map((t) => { const [v, c] = verdict(t, r.p); return `<div class="${c === 'bad' ? 'c-bad' : c === 'warn' && r.p && r.p.totReqOk ? 'c-warn' : ''}">${h.esc(totName(t))}</div>`; }).join('') : '<span class="dim">—</span>') },
       { k: 'd', l: 'Requested on', v: (r) => (r.reqs[0] && r.reqs[0].requested ? +r.reqs[0].requested : 0), h: (r) => r.reqs.map((t) => (t.requested ? RC.fmt.date(t.requested) : '—')).join('<br>') },
       { k: 'tr', l: 'TR ID', v: (r) => (r.p ? r.p.tr || '' : r.t.tr || ''), h: (r) => (r.p ? trCell(r.p) : h.esc(r.t.tr || '—')) },
+      { k: 'el', l: 'Eligibility', v: (r) => (r.p ? ['Not OK', 'Warn', 'Not reviewed', 'OK'].indexOf(r.p.elig.value) : 9), xl: [{ l: 'Eligibility', v: (r) => (r.p ? r.p.elig.value : '') }, { l: 'Document remarks', v: (r) => (r.p ? r.p.elig.remark : (r.t.remarks || '')) }], h: (r) => (r.p ? eligCell(r.p) : h.esc(r.t.remarks || '')) },
       { k: 't', l: 'TOT status', v: (r) => ORDER[r.cat], h: (r) => (r.p ? totPill(r.p) + batchNote(r.p) : h.pill('Not in nominations', 'warn')) },
       { k: 'i', l: 'To fix', v: (r) => fixes(r).length, h: (r) => fixes(r).map(([t, bad]) => `<div class="${bad ? 'c-bad' : ''}">${h.esc(t)}</div>`).join('') },
     ];
@@ -273,8 +286,9 @@
       m.totNotYet ? `<li><b>Date TBD</b> — ${m.totNotYet} trainers yet to request, aligned as requests come in</li>` : ''].join('');
     const kp = `<div class="stiles">
       ${tile('TOT requests raised', `${m.totReq}<small> mapped trainers</small>`, `across ${m.totReqCentres} TCs · of ${m.filled} mapped`, 'info')}
-      ${tile('Assessment scheduled', `${m.totSched}<small> trainers</small>`, waves.length ? waves.map((w) => `${w.date ? 'Assessment ' + RC.fmt.date(w.date) : 'date TBD'}: ${w.rows.length} trainer${w.rows.length === 1 ? '' : 's'}, ${h.esc([...w.qps].join(', '))} (batch ${h.esc(w.batch)}), across ${w.tcs} TC${w.tcs === 1 ? '' : 's'}`).join('<br>') : 'No batch file loaded yet', 'info')}
+      ${tile('In TOT batches', `${m.totSched}<small> trainers</small>`, `${m.totAssessed} assessed (marks recorded) · ${m.totAbsent} absent · ${m.totSched - m.totAssessed - m.totAbsent} awaiting assessment<br>` + (waves.length ? waves.map((w) => `${w.date ? 'Assessment ' + RC.fmt.date(w.date) : 'date TBD'}: ${w.rows.length} trainer${w.rows.length === 1 ? '' : 's'}, ${h.esc([...w.qps].join(', '))} (batch ${h.esc(w.batch)}), across ${w.tcs} TC${w.tcs === 1 ? '' : 's'}`).join('<br>') : 'No batch file loaded yet'), 'info')}
       ${tile('Yet to raise TOT request', `${m.totNotYet}<small> mapped trainers</small>`, `including ${m.totNotYetNoTR} who need a TR ID first${m.totNotYetWrong ? ` and ${m.totNotYetWrong} who requested the wrong course` : ''}. ${h.esc(note)}`, 'warn')}
+      ${tile('Counted & eligible (OK)', `${m.eligOK}<small>/${m.filled}</small>`, `${m.eligNot} not OK · ${m.eligWarn} warn · ${m.eligNR} not reviewed${m.eligAuto ? `<br>${m.eligAuto} proposed from document remarks — confirm in the Eligibility column` : ''}`, 'good')}
       ${tile('TOT completed', `${m.tot}<small>/${m.filled}</small>`, m.trMismatch + m.trFromPortal ? `${m.trMismatch + m.trFromPortal} TR IDs to correct in nominations` : '', 'good')}
     </div>` + h.section('Training plan for ToT', `<ol class="plan">${planLines}</ol><p class="dim">TC-wise calendar below.</p>`);
     if (RC.TableExport) RC.TableExport.addSheet('Summary and plan', [['Item', 'Value', 'Detail'],
@@ -310,7 +324,7 @@
     if (c.state === 'None' && !c.unassignedHere.length) items.push({ sev: 'high', text: `No nominations received — ${c.req} trainer(s) needed (${c.byCourse.map((b) => `${b.code} ${b.req}`).join(', ')})` });
     else if (c.gap) items.push({ sev: 'high', text: `Need ${c.gap} more: ${c.byCourse.filter((b) => b.gap).map((b) => `${short(b.code)} ${b.gap}`).join(', ')}` + (c.unassignedHere.length ? ` — ${c.unassignedHere.length} unassigned ${c.unassignedHere[0].srcLabel} nominations may cover this` : '') });
     for (const p of c.people) {
-      for (const f of p.flags) if (['SHARED_TR', 'NO_MOBILE', 'BAD_MOBILE', 'SAME_NAME', 'NONSTANDARD', 'DOB_ODD', 'DECISION_INVALID', 'MULTI_TC', 'TR_MISMATCH', 'TR_FROM_PORTAL', 'TR_PORTAL_MULTI', 'TOT_WRONG_COURSE', 'TOT_EXTRA', 'TOT_NOT_COUNTED', 'TOT_NAME_MATCH', 'TOT_MOBILE_DIFF', 'TOT_BATCH_MISMATCH', 'TOT_RESULT_PENDING', 'TOT_NOT_CLEARED', 'TOT_STALE_REQUEST'].includes(f.code) || (f.code === 'NO_TR' && p.status === 'Required')) items.push({ sev: f.sev, p, text: f.code === 'NO_TR' ? 'Counted trainer — create TR ID before TOT' : f.text });
+      for (const f of p.flags) if (['SHARED_TR', 'NO_MOBILE', 'BAD_MOBILE', 'SAME_NAME', 'NONSTANDARD', 'DOB_ODD', 'DECISION_INVALID', 'MULTI_TC', 'TR_MISMATCH', 'TR_FROM_PORTAL', 'TR_PORTAL_MULTI', 'TOT_WRONG_COURSE', 'TOT_EXTRA', 'TOT_NOT_COUNTED', 'TOT_NAME_MATCH', 'TOT_MOBILE_DIFF', 'TOT_BATCH_MISMATCH', 'TOT_RESULT_PENDING', 'TOT_NOT_CLEARED', 'TOT_STALE_REQUEST', 'ELIG_NOT_OK', 'ELIG_WARN', 'TOT_ABSENT', 'NEW_UNLOCKED'].includes(f.code) || (f.code === 'NO_TR' && p.status === 'Required')) items.push({ sev: f.sev, p, text: f.code === 'NO_TR' ? 'Counted trainer — create TR ID before TOT' : f.text });
       if (p.flags.some((f) => f.code === 'MULTI_COURSE') && !p.dec) items.push({ sev: 'med', p, text: `Nominated for ${p.codes.length + p.others.length} courses; ${p.status === 'Required' ? 'counted' : p.status.toLowerCase()} on ${short(p.course)} — confirm` });
       for (const s of p.suggest) items.push({ sev: 'low', p, text: s });
     }
@@ -351,7 +365,21 @@
       return `<tr data-href="#/nom/people?flag=${k}"><td><b>${h.esc(FLAG_LABEL[k] || k)}</b></td><td>${h.pill(v.sev, SEV[v.sev])}</td><td class="n">${v.n}</td><td class="dim">e.g. ${h.esc(ex)}</td></tr>`;
     }).join('')}</tbody></table>`;
     return h.head('Nomination checks', 'Person-level flags from the rules, and file-level checks from reading the workbooks.', [['Nominations', '#/nom'], ['Checks']]) +
-      h.section('Flags on people', ftbl) + h.section('File checks', h.table('nom-issues', cols, N.issues, { empty: 'Both workbooks read cleanly: every expected sheet and column was found.' }));
+      proposalsSection(N) + h.section('Flags on people', ftbl) + h.section('File checks', h.table('nom-issues', cols, N.issues, { empty: 'Both workbooks read cleanly: every expected sheet and column was found.' }));
+  }
+
+  /* CR22 — lock banner and proposed changes */
+  function lockBanner(N) {
+    const h = H(), n = (N.proposals || []).length;
+    return `<div class="lockbar ${N.lock ? 'on' : ''}">${N.lock ? `🔒 Allocation locked${N.lock.on ? ' on ' + RC.fmt.date(N.lock.on) : ''} (${N.lock.n} people) — new files do not change Counted / Backup / Rejected.` : `Allocation not locked — statuses are recomputed from the nominations file on every load. <a href="#/nom/exports">Lock it</a>.`}${n ? ` · <a href="#/nom/issues"><b>${n} proposed change${n === 1 ? '' : 's'}</b></a>` : ''}</div>`;
+  }
+  function proposalsSection(N) {
+    const h = H(), P = N.proposals || []; if (!P.length) return '';
+    const cols = [
+      { k: 'k', l: 'Type', v: (x) => x.kind, h: (x) => h.pill(x.kind, x.sev === 'high' ? 'bad' : 'warn') },
+      { k: 't', l: 'Proposed change (not applied)', v: (x) => x.text, h: (x) => (x.p ? `<b>${personLink(x.p)}</b> — ` : '') + h.esc(x.p ? x.text.replace(/^[^—]*— /, '') : x.text) },
+    ];
+    return h.section(`Proposed changes (${P.length}) — nothing here is applied automatically`, h.table('nom-proposals', cols, P, { href: (x) => (x.p ? `#/nom/person/${enc(x.p.key)}` : null), limit: 60 }) + '<p class="dim">To act: set Decision / AssignCourse / Eligibility in the Decisions file and reload. To accept new nominees as placed, lock again from Exports.</p>');
   }
 
   /* ---------- Exports / sources ---------- */
@@ -368,11 +396,14 @@
           <p>Save it in the data folder as downloaded (name starts with <code>${h.esc(RC.brand().filePrefix)}_Decisions</code>) and reload. Decisions already made are kept when you export again.</p>
           <p><b>${N.m.decided}</b> decisions currently applied${s.decisions ? ' from ' + h.esc(s.decisions.name) : ''}.</p></div>
           <button class="btn" data-act="nom-decisions">Download Decisions .xlsx</button></div>
+        <div class="exp"><div><h3>🔒 Lock current allocation</h3><p class="dim">Downloads the Decisions file with every person's current Counted / Backup / Rejected status, course and centre filled in and marked Locked. Put it in the data folder: from then on, loading new Excel files never changes anyone's status or course. New nominees are placed automatically but shown as "New since lock", and anything that would need a change is listed under Checks → Proposed changes.</p>
+          <p>${N.lock ? `Locked: <b>${N.lock.n}</b> people${N.lock.on ? ' on ' + RC.fmt.date(N.lock.on) : ''}. Lock again to include confirmed new people.` : '<b>Not locked yet.</b>'}</p></div>
+          <button class="btn" data-act="nom-lock">Lock allocation (.xlsx)</button></div>
         <div class="exp"><div><h3>Clean nominations workbook</h3><p class="dim">Summary per centre, counted trainers, backup, rejected (with reason), unassigned, every exception, and file checks. Ready to share or to send back to centres.</p>
           <p><b>${N.m.filled}</b> counted · <b>${N.m.backup}</b> backup · <b>${N.m.rejected}</b> rejected · <b>${N.m.unassigned}</b> unassigned</p></div>
           <button class="btn" data-act="nom-clean">Download clean .xlsx</button></div>
       </div>` +
-      h.section('Sources used', `<table class="tbl"><thead><tr><th>Role</th><th>File</th><th>Modified</th></tr></thead><tbody>${src(s.plan, 'Plan of action')}${src(s.nominations, 'Nominations')}${src(s.decisions, 'Decisions')}${src(s.tot, 'TOT requests — yet to accept')}${src(s.totBatch, 'TOT batches — scheduled')}</tbody></table>${ign}`);
+      h.section('Sources used', `<table class="tbl"><thead><tr><th>Role</th><th>File</th><th>Modified</th></tr></thead><tbody>${src(s.plan, 'Plan of action')}${src(s.nominations, 'Nominations')}${src(s.decisions, 'Decisions')}${s.totBook ? src(s.totBook, 'TOT requests + batches (with remarks)') : src(s.tot, 'TOT requests — yet to accept') + src(s.totBatch, 'TOT batches — scheduled')}</tbody></table>${ign}`);
   }
 
   /* ---------- Course (CR9) ---------- */
@@ -400,7 +431,7 @@
     const map = RC.NomMap.svg(N, { course: code, labels: true, interactive: true });
     const poolNote = o.pool.length ? `<p class="note">Nominated for ${h.esc(short(code))} at centres that don't run it. Short centres for this course: ${o.shortCentres.slice(0, 8).map((x) => `${h.esc(x.c.label.replace(/^GTTC /, ''))} (−${x.b.gap})`).join(', ') || 'none'}.</p>` : '';
     return h.head(cr.name, `${code} · allocated at ${o.centres} centres · ${o.req} batches · ${num(o.req * RC.NOM.rules.seatsPerBatch)} seats · ${o.received} nominations received`, [['Nominations', '#/nom'], [short(code)]], tabs) + kp +
-      `<div class="mapwrap stack"><section class="card"><div class="card-h"><h2>Centres running this course</h2></div>${ctab}</section><section class="card">${map}</section></div>` +
+      `<div class="mapwrap stacked"><section class="card"><div class="card-h"><h2>Centres running this course</h2></div>${ctab}</section><section class="card">${map}</section></div>` +
       h.section(`Counted trainers (${o.trainers.length})`, peopleTable('ct-' + code, o.trainers, {})) +
       (o.backups.length ? h.section(`Backup (${o.backups.length})`, peopleTable('cb-' + code, o.backups, {})) : '') +
       (o.pool.length ? h.section(`Pool: nominated where the course isn't allocated (${o.pool.length})`, poolNote + peopleTable('cp-' + code, o.pool, {})) : '');
@@ -428,7 +459,7 @@
   }
 
   ui.actions = Object.assign(ui.actions || {}, { 'map-mode': (el) => { ui.mapMode = el.dataset.mode; RC.Views.render(); }, 'map-course': (el) => { ui.mapCourse = el.dataset.course; RC.Views.render(); } });
-  ui.actions = Object.assign(ui.actions || {}, { 'nom-decisions': () => RC.NomExport.run('decisions'), 'nom-clean': () => RC.NomExport.run('clean') });
+  ui.actions = Object.assign(ui.actions || {}, { 'nom-decisions': () => RC.NomExport.run('decisions'), 'nom-lock': () => RC.NomExport.run('lock'), 'nom-clean': () => RC.NomExport.run('clean') });
 
   RC.Views.addRoutes([
     [/^\/nom$/, overview], [/^\/nom\/centre\/([^/]+)$/, centre], [/^\/nom\/people$/, people], [/^\/nom\/person\/(.+)$/, person],

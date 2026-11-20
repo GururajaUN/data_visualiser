@@ -143,6 +143,23 @@
     const s = new Date(d.getFullYear(), d.getDate() - 1, d.getMonth() + 1);
     return age(s) >= 0 && age(s) <= 60 ? s : d;
   }
+  /* CR23 — eligibility and assessment marks */
+  function eligVal(v, issues, where, row) {
+    const t = txt(v); if (!t) return null; const E = (RC.NOM.eligibility || {}).values || ['OK', 'Warn', 'Not OK'];
+    const hit = E.find((x) => norm(x) === norm(t)) || (/^not\s*ok$|^no$|^not eligible$/i.test(t) ? 'Not OK' : /^warn/i.test(t) ? 'Warn' : /^(ok|yes|eligible)$/i.test(t) ? 'OK' : null);
+    if (!hit) issues.push({ level: 'warn', ...where, row, field: 'Eligibility', msg: `"${t}" not understood — use ${E.join(', ')}` });
+    return hit;
+  }
+  function eligAuto(remark) {
+    const t = txt(remark); if (!t) return null;
+    for (const r of ((RC.NOM.eligibility || {}).auto || [])) if (new RegExp(r.match, 'i').test(t)) return r.value;
+    return null;
+  }
+  function mark(v) {
+    const t = txt(v); if (!t) return null;
+    if (/^ab/i.test(t)) return 'Absent';
+    const n = Number(t); return Number.isFinite(n) ? Math.round(n * 100) / 100 : t;
+  }
   /* CR12 — TOT request tracker (portal dump) */
   function qpCode(raw) {
     const m = String(raw || '').match(/RSC\/?\s*Q?\s*(\d{4})/i); if (!m) return { qp: null, code: null };
@@ -161,7 +178,7 @@
       const tr = txt(g('tr')).toUpperCase();
       if (!/^TR\d+$/.test(tr)) issues.push({ level: 'warn', ...where, row: r.excelRow, field: 'Applicant ID', msg: `"${txt(g('tr'))}" is not a TR ID` });
       return { tr: /^TR\d+$/.test(tr) ? tr : null, name: txt(g('name')), email: txt(g('email')), mobile: mm.ok ? mm.m : null, mobileRaw: mm.raw, qpRaw: txt(g('qp')), qp: q.qp, code: q.code,
-        district: txt(g('district')), sub: txt(g('sub')), requested: pastDate(toD(rq)), status: txt(g('status')), cert: txt(g('cert')), src: { file: file.name, sheet: s.name, row: r.excelRow }, person: null, how: null };
+        district: txt(g('district')), sub: txt(g('sub')), requested: pastDate(toD(rq)), status: txt(g('status')), cert: txt(g('cert')), remarks: txt(g('remarks')), elig: eligVal(g('elig'), issues, where, r.excelRow), src: { file: file.name, sheet: s.name, row: r.excelRow }, person: null, how: null };
     });
   }
 
@@ -184,7 +201,7 @@
       if (st && en && st > en && sw(st) <= en) st = sw(st);
       if (en && st && en < st && sw(en) >= st) en = sw(en);
       if (dt && en && dt < (st || en) && sw(dt) >= (st || en)) dt = sw(dt);
-      return { batch: txt(g('batch')), date: dt, start: st, end: en, email: txt(g('email')), hasResult: idx.result != null, name: txt(g('name')), mobile: mm.ok ? mm.m : null, mobileRaw: mm.raw, tr: /^TR\d+$/.test(tr) ? tr : null,
+      return { batch: txt(g('batch')), date: dt, start: st, end: en, email: txt(g('email')), hasResult: idx.result != null, domain: mark(g('domain')), platform: mark(g('platform')), hasMarks: idx.domain != null || idx.platform != null, remarks: txt(g('remarks')), elig: eligVal(g('elig'), issues, where, r.excelRow), name: txt(g('name')), mobile: mm.ok ? mm.m : null, mobileRaw: mm.raw, tr: /^TR\d+$/.test(tr) ? tr : null,
         qpRaw: txt(g('qp')), qp: q.qp, code: q.code, result, src: { file: file.name, sheet: s.name, row: r.excelRow }, person: null, how: null };
     });
   }
@@ -199,18 +216,21 @@
     };
     const ps = file.sheets[D.peopleSheet];
     if (ps) {
-      const idx = colMap(ps.header, { key: { h: ['PersonKey'], required: true }, tc: { h: ['AssignTC'] }, course: { h: ['AssignCourse'] }, dec: { h: ['Decision'] }, tot: { h: ['TOTStatus'] }, totDate: { h: ['TOTDate'] }, notes: { h: ['Notes'] } }, issues, { file: file.name, sheet: D.peopleSheet });
+      const idx = colMap(ps.header, { key: { h: ['PersonKey'], required: true }, tc: { h: ['AssignTC'] }, course: { h: ['AssignCourse'] }, dec: { h: ['Decision'] }, tot: { h: ['TOTStatus'] }, totDate: { h: ['TOTDate'] }, notes: { h: ['Notes'] },
+        locked: { h: ['Locked'] }, lockedOn: { h: ['LockedOn'] }, elig: { h: ['Eligibility'] }, name: { h: ['Name'] }, centre: { h: ['SourceCentre'] } }, issues, { file: file.name, sheet: D.peopleSheet });
       for (const r of ps.rows) {
         const where = { file: file.name, sheet: D.peopleSheet, row: r.excelRow };
         const key = txt(cell(r, idx, 'key')); if (!key) continue;
         const courseRaw = txt(cell(r, idx, 'course')); const code = courseRaw ? matchCourse(courseRaw) : null;
         if (courseRaw && !code) issues.push({ level: 'error', ...where, field: 'AssignCourse', msg: `Course "${courseRaw}" not recognised; ignored` });
         const td = cell(r, idx, 'totDate');
-        const any = ['tc', 'course', 'dec', 'tot', 'totDate', 'notes'].some((k) => txt(cell(r, idx, k)));
+        const any = ['tc', 'course', 'dec', 'tot', 'totDate', 'notes', 'locked', 'elig'].some((k) => txt(cell(r, idx, k)));
         if (!any) continue; // row exported but not edited
         out.people.set(key, { key, tc: txt(cell(r, idx, 'tc')).toUpperCase() || null, course: code, decision: val(D.decisionValues, cell(r, idx, 'dec'), where, 'Decision'),
           decisionRaw: txt(cell(r, idx, 'dec')), totRaw: txt(cell(r, idx, 'tot')), courseRaw,
-          tot: val(D.totValues, cell(r, idx, 'tot'), where, 'TOTStatus'), totDate: td instanceof Date ? td : null, notes: txt(cell(r, idx, 'notes')), row: r.excelRow, used: false });
+          tot: val(D.totValues, cell(r, idx, 'tot'), where, 'TOTStatus'), totDate: td instanceof Date ? td : null, notes: txt(cell(r, idx, 'notes')), row: r.excelRow, used: false,
+          locked: /^(y|yes|true|1)$/i.test(txt(cell(r, idx, 'locked'))), lockedOn: toD(cell(r, idx, 'lockedOn')), elig: eligVal(cell(r, idx, 'elig'), issues, where, r.excelRow),
+          name: txt(cell(r, idx, 'name')), centre: txt(cell(r, idx, 'centre')) });
       }
     } else issues.push({ level: 'warn', file: file.name, msg: `Decisions file has no "${D.peopleSheet}" sheet` });
     const cs = file.sheets[D.centresSheet];
@@ -235,10 +255,11 @@
     if (!RC.NOM || !RC.NOM.files) return null;
     const issues = [];
     const pick = (t) => files.filter((f) => f.type === t).sort((a, b) => b.lastModified - a.lastModified);
-    const plans = pick('nomPlan'), lists = pick('nomList'), decs = pick('nomDecisions'), tots = pick('nomTot'), tbs = pick('nomTotBatch');
+    const plans = pick('nomPlan'), lists = pick('nomList'), decs = pick('nomDecisions'), tots = pick('nomTot'), tbs = pick('nomTotBatch'), books = pick('nomTotBook');
     if (!plans.length || !lists.length) return null;
-    const planF = plans[0], listF = lists[0], decF = decs[0] || null, totF = tots[0] || null, tbF = tbs[0] || null;
-    for (const [arr, l] of [[plans, 'plan'], [lists, 'nominations'], [decs, 'decisions'], [tots, 'TOT request'], [tbs, 'TOT batch']]) if (arr.length > 1) issues.push({ level: 'info', file: '(folder)', msg: `${arr.length} ${l} files found; using the most recently modified: ${arr[0].name}` });
+    const planF = plans[0], listF = lists[0], decF = decs[0] || null, book = books[0] || null, totF = book || tots[0] || null, tbF = book || tbs[0] || null;
+    if (book && (tots.length || tbs.length)) issues.push({ level: 'info', file: '(folder)', msg: `TOT data read from ${book.name} (sheets TR_Raised and Batches); older files ignored: ${[...tots, ...tbs].map((f) => f.name).join(', ')}` });
+    for (const [arr, l] of [[plans, 'plan'], [lists, 'nominations'], [decs, 'decisions'], [book ? [] : tots, 'TOT request'], [book ? [] : tbs, 'TOT batch'], [books, 'TOT requests + batches']]) if (arr.length > 1) issues.push({ level: 'info', file: '(folder)', msg: `${arr.length} ${l} files found; using the most recently modified: ${arr[0].name}` });
 
     const centresArr = readPlan(planF, issues);
     const noms = readMapped(listF, issues);
@@ -345,7 +366,7 @@
       }
       // 2. automatic
       const rest = c.people.filter((p) => !p.status);
-      const auto = rest.map((p) => ({ p, opts: allowed(p) })).sort((a, b) => (a.opts.length || 99) - (b.opts.length || 99) || (b.p.tr ? 1 : 0) - (a.p.tr ? 1 : 0) || a.p.noms[0].i - b.p.noms[0].i);
+      const auto = rest.map((p) => ({ p, opts: allowed(p) })).sort((a, b) => (a.opts.length || 99) - (b.opts.length || 99) || (b.p.trNom ? 1 : 0) - (a.p.trNom ? 1 : 0) || a.p.noms[0].i - b.p.noms[0].i);
       for (const { p, opts } of auto) {
         if (!opts.length) {
           const why = p.codes.length ? `Nominated for ${p.codes.map((k) => courseOf(k).short).join(', ')} — not allocated at this centre` : `Course "${p.others.join(', ')}" is not one of the 4 project courses`;
@@ -375,15 +396,29 @@
       const myB = p.totBatches.filter((b) => counted && b.code === p.course).sort((a, b) => (a.date || 0) - (b.date || 0));
       p.totBatch = myB.length ? myB[myB.length - 1] : null;
       p.totBatchOther = p.totBatches.filter((b) => !(counted && b.code === p.course));
-      const fromBatch = p.totBatch ? (p.totBatch.result === 'Pass' ? 'Completed' : p.totBatch.result === 'Fail' ? 'Failed' : p.totBatch.result === 'Absent' ? 'Absent' : 'Scheduled') : null;
+      const bt = p.totBatch; const marked = bt && ((typeof bt.domain === 'number') || (typeof bt.platform === 'number'));
+      const absent = bt && bt.domain === 'Absent' && (bt.platform === 'Absent' || bt.platform == null);
+      const fromBatch = bt ? (bt.result === 'Pass' ? 'Completed' : bt.result === 'Fail' ? 'Failed' : bt.result === 'Absent' || absent ? 'Absent' : marked ? 'Assessed' : 'Scheduled') : null;
       const fromReq = p.totReqOk ? 'Training requested' : p.totWrong ? 'Requested - wrong course' : p.totNotCounted ? 'Requested - not counted' : null;
       const computed = fromBatch || fromReq;
       if (computed) p.tot = computed;
-      if (p.dec && p.dec.tot && ['Scheduled', 'Completed', 'Failed', 'Absent'].includes(p.dec.tot) && (!computed || !fromBatch)) p.tot = p.dec.tot;
+      if (p.dec && p.dec.tot && ['Scheduled', 'Assessed', 'Completed', 'Failed', 'Absent'].includes(p.dec.tot) && (!computed || !fromBatch)) p.tot = p.dec.tot;
       p.totDone = p.tot === 'Completed';
-      p.totSched = counted && (p.tot === 'Scheduled' || p.totDone);
-      p.totAsked = counted && (p.totDone || p.tot === 'Scheduled' || p.tot === 'Training requested' || p.tot === 'Failed' || p.tot === 'Absent' || p.totReqOk);
+      p.totSched = counted && (p.tot === 'Scheduled' || p.tot === 'Assessed' || p.tot === 'Absent' || p.tot === 'Failed' || p.totDone);
+      p.totAssessed = counted && (p.tot === 'Assessed' || p.totDone || p.tot === 'Failed');
+      p.totAbsent = counted && p.tot === 'Absent';
+      p.totAsked = counted && (p.totDone || p.tot === 'Scheduled' || p.tot === 'Assessed' || p.tot === 'Training requested' || p.tot === 'Failed' || p.tot === 'Absent' || p.totReqOk);
       p.totReqDate = p.totReqs.reduce((m, t) => (t.requested && (!m || t.requested < m) ? t.requested : m), null);
+    }
+
+    // CR23 — eligibility: Decisions file > Eligibility column (batch row, then request row) > proposed from remarks
+    for (const p of people) {
+      const rows = [...p.totBatches.slice().reverse(), ...p.totReqs];
+      const rem = rows.map((t) => t.remarks).find(Boolean) || '';
+      const ex = rows.find((t) => t.elig);
+      p.elig = p.dec && p.dec.elig ? { value: p.dec.elig, source: 'decision', remark: rem }
+        : ex ? { value: ex.elig, source: 'sheet', remark: ex.remarks || rem }
+        : rem ? { value: eligAuto(rem) || 'Warn', source: 'auto', remark: rem } : { value: 'Not reviewed', source: null, remark: '' };
     }
 
     // flags
@@ -413,10 +448,14 @@
       if (p.totNotCounted) F(p, 'TOT_NOT_COUNTED', 'med', `TOT requested for ${p.totReqs.map(cn).join(', ')} but this person is ${p.status === 'Rejected' ? 'rejected' : p.status.toLowerCase()} (${p.why})`);
       { const t = p.totReqs.find((x) => x.how !== 'name' && x.mobile && p.mobile && x.mobile !== p.mobile); if (t) F(p, 'TOT_MOBILE_DIFF', 'med', `TOT portal mobile ${t.mobile} differs from nominations ${p.mobile} (matched on ${t.how})`); }
       if (p.totReqs.some((t) => t.how === 'name')) { const t = p.totReqs.find((x) => x.how === 'name'); F(p, 'TOT_NAME_MATCH', 'med', `TOT request "${t.name}" (${t.tr || 'no TR'}${t.mobileRaw ? ', mobile ' + t.mobileRaw : ', no mobile'}) matched by name only — confirm it is the same person`); }
+      const counted2 = p.status === 'Required' || p.status === 'Backup';
+      if (counted2 && p.elig.value === 'Not OK') F(p, 'ELIG_NOT_OK', 'high', `${p.status === 'Required' ? 'Counted' : 'Backup'} but documents show not eligible${p.elig.source === 'auto' ? ' (auto from remarks — confirm)' : ''}: ${p.elig.remark || 'see review'}`);
+      else if (counted2 && p.elig.value === 'Warn') F(p, 'ELIG_WARN', 'med', `Document issue${p.elig.source === 'auto' ? ' (auto from remarks — confirm)' : ''}: ${p.elig.remark || 'see review'}`);
+      if (p.tot === 'Absent') F(p, 'TOT_ABSENT', 'high', `Absent at TOT assessment (batch ${p.totBatch ? p.totBatch.batch : ''}) — needs a new TOT slot`);
       if (p.totBatchOther.length) F(p, 'TOT_BATCH_MISMATCH', 'high', `In TOT batch ${p.totBatchOther.map((b) => b.batch + ' (' + (b.qp || b.qpRaw) + ')').join(', ')} but ${p.status === 'Required' ? 'counted on ' + courseOf(p.course).short : p.status.toLowerCase()}`);
       if (p.totBatch && p.totReqs.some((t) => t.code === p.totBatch.code)) F(p, 'TOT_STALE_REQUEST', 'low', `Batched in ${p.totBatch.batch} but still listed in the yet-to-accept sheet — portal dump may be out of date`);
       if (p.totBatch && p.totBatch.hasResult && !p.totBatch.result && p.totBatch.date && p.totBatch.date < today) F(p, 'TOT_RESULT_PENDING', 'med', `TOT assessment on ${p.totBatch.date.toDateString().slice(4)} (batch ${p.totBatch.batch}) — result not recorded`);
-      if (p.tot === 'Failed' || p.tot === 'Absent') F(p, 'TOT_NOT_CLEARED', 'high', `TOT ${p.tot === 'Failed' ? 'failed' : 'absent'} in batch ${p.totBatch ? p.totBatch.batch : ''} — needs a new TOT slot`);
+      if (p.tot === 'Failed') F(p, 'TOT_NOT_CLEARED', 'high', `TOT failed in batch ${p.totBatch ? p.totBatch.batch : ''} — needs a new TOT slot`);
       if (!p.tr) F(p, 'NO_TR', 'high', p.status === 'Required' ? 'Counted trainer has no TR ID (Skill India trainer ID) yet' : 'No TR ID (Skill India trainer ID) yet');
       if (!d) F(p, 'NO_DETAIL', 'med', 'No matching row in All Nominations (no DOB / qualification / experience)');
       else {
@@ -426,6 +465,22 @@
       }
     }
     const SEV = { high: 0, med: 1, low: 2 };
+    // CR22 — allocation lock: once a Decisions file with Locked rows exists, nothing moves on reload; differences become proposals
+    const lockRows = [...D.people.values()].filter((d) => d.locked);
+    const lock = lockRows.length ? { on: lockRows.map((d) => d.lockedOn).filter(Boolean).sort((a, b) => b - a)[0] || null, n: lockRows.length } : null;
+    const proposals = [];
+    if (lock) {
+      for (const p of people) if (!(p.dec && p.dec.locked) && p.tc && ['Required', 'Backup', 'Rejected'].includes(p.status)) {
+        p.unlocked = true;
+        F(p, 'NEW_UNLOCKED', 'med', `New since the allocation was locked — placed automatically as ${p.status === 'Required' ? 'Counted' : p.status}${p.course ? ' on ' + courseOf(p.course).short : ''}; confirm and lock`);
+        proposals.push({ kind: 'New nominee', sev: p.status === 'Required' ? 'high' : 'med', p, text: `${p.name} (${p.centre ? p.centre.label : p.srcLabel}) — placed as ${p.status === 'Required' ? 'Counted' : p.status}${p.course ? ' on ' + courseOf(p.course).short : ''}. Confirm and lock, or set a Decision.` });
+      }
+      for (const d of lockRows) if (!d.used && d.decision === 'Required') proposals.push({ kind: 'Locked trainer missing', sev: 'high', text: `${d.name || d.key} (${d.centre || d.tc || ''}${d.course ? ', ' + courseOf(d.course).short : ''}) is locked as Counted but is no longer in the nominations file — the slot is open.` });
+    }
+    for (const p of people) if (p.status === 'Required' && p.elig.value === 'Not OK') {
+      const alt = people.filter((q) => q.status === 'Backup' && q.centre === p.centre && q.course === p.course && q.elig.value !== 'Not OK').map((q) => q.name);
+      proposals.push({ kind: 'Not eligible', sev: 'high', p, text: `${p.name} (${p.centre ? p.centre.label : ''}, ${courseOf(p.course).short}) — ${p.elig.remark || 'not eligible'}${p.elig.source === 'auto' ? ' (auto)' : ''}. ${alt.length ? 'Backup here: ' + alt.join(', ') + '.' : 'No backup at this centre for this course.'} Counted stays until you change the Decision.` });
+    }
     for (const p of people) p.flags.sort((a, b) => SEV[a.sev] - SEV[b.sev]);
 
     // centre metrics
@@ -450,6 +505,9 @@
       c.tot = c.requiredPeople.filter((p) => p.totDone).length;
       c.totReq = c.requiredPeople.filter((p) => p.totAsked).length;
       c.totSched = c.requiredPeople.filter((p) => p.totSched).length;
+      c.totAssessed = c.requiredPeople.filter((p) => p.totAssessed).length; c.totAbsent = c.requiredPeople.filter((p) => p.totAbsent).length;
+      c.eligOK = c.requiredPeople.filter((p) => p.elig.value === 'OK').length; c.eligWarn = c.requiredPeople.filter((p) => p.elig.value === 'Warn').length;
+      c.eligNot = c.requiredPeople.filter((p) => p.elig.value === 'Not OK').length; c.eligNR = c.requiredPeople.filter((p) => p.elig.value === 'Not reviewed').length;
       c.totWrong = c.people.filter((p) => p.totWrong).length;
       c.flagCount = c.people.reduce((s, p) => s + p.flags.filter((f) => f.sev === 'high').length, 0);
       c.state = c.rows === 0 ? 'None' : c.gap === 0 ? 'Covered' : 'Short';
@@ -482,6 +540,13 @@
       withTR: people.filter((p) => p.status === 'Required' && p.tr).length, tot: people.filter((p) => p.status === 'Required' && p.totDone).length,
       totReq: people.filter((p) => p.status === 'Required' && p.totAsked).length,
       totSched: people.filter((p) => p.status === 'Required' && p.totSched).length,
+      totAssessed: people.filter((p) => p.status === 'Required' && p.totAssessed).length,
+      totAbsent: people.filter((p) => p.status === 'Required' && p.totAbsent).length,
+      eligOK: people.filter((p) => p.status === 'Required' && p.elig.value === 'OK').length,
+      eligWarn: people.filter((p) => p.status === 'Required' && p.elig.value === 'Warn').length,
+      eligNot: people.filter((p) => p.status === 'Required' && p.elig.value === 'Not OK').length,
+      eligNR: people.filter((p) => p.status === 'Required' && p.elig.value === 'Not reviewed').length,
+      eligAuto: people.filter((p) => p.status === 'Required' && p.elig.source === 'auto').length,
       totReqCentres: new Set(people.filter((p) => p.status === 'Required' && p.totAsked && p.centre).map((p) => p.centre.tc)).size,
       totSchedCentres: new Set(people.filter((p) => p.status === 'Required' && p.totSched && p.centre).map((p) => p.centre.tc)).size,
       totNotYet: people.filter((p) => p.status === 'Required' && !p.totAsked).length,
@@ -506,7 +571,7 @@
       o.gap = o.req - o.filled;
       o.trainers = people.filter((p) => p.status === 'Required' && p.course === k);
       o.backups = people.filter((p) => p.status === 'Backup' && p.course === k);
-      o.withTR = o.trainers.filter((p) => p.tr).length; o.tot = o.trainers.filter((p) => p.totDone).length; o.totReq = o.trainers.filter((p) => p.totAsked).length; o.totSched = o.trainers.filter((p) => p.totSched).length; o.totWrong = o.trainers.filter((p) => p.totWrong).length;
+      o.withTR = o.trainers.filter((p) => p.tr).length; o.tot = o.trainers.filter((p) => p.totDone).length; o.totReq = o.trainers.filter((p) => p.totAsked).length; o.totSched = o.trainers.filter((p) => p.totSched).length; o.eligOK = o.trainers.filter((p) => p.elig.value === 'OK').length; o.eligRisk = o.trainers.filter((p) => p.elig.value === 'Warn' || p.elig.value === 'Not OK').length; o.totWrong = o.trainers.filter((p) => p.totWrong).length;
       o.pool = people.filter((p) => p.status === 'Rejected' && p.codes.includes(k) && p.centre && !p.centre.courses[k]);
       o.shortCentres = o.rows.filter((x) => x.b.gap > 0).sort((a, b) => b.b.gap - a.b.gap || a.c.label.localeCompare(b.c.label));
       o.caafPending = o.rows.filter((x) => !x.c.caafDone).length;
@@ -571,7 +636,7 @@
     return { slots, ladder, stuck, bands, sequencing, firstStart, planFirstStart, agreedStart: agreed, milestones,
       centres: centresArr, people, noms, m, issues, by: { centre: C, person: P },
       asOf: nomDate(listF.name) || new Date(listF.lastModified.toDateString()),
-      sources: { plan: planF, nominations: listF, decisions: decF, tot: totF, totBatch: tbF }, totRows, totOrphans, tbRows,
+      lock, proposals, sources: { plan: planF, nominations: listF, decisions: decF, tot: totF, totBatch: tbF === totF ? null : tbF, totBook: book }, totRows, totOrphans, tbRows,
       totWaves: Object.values(tbRows.reduce((acc, b) => { const k = b.batch; (acc[k] = acc[k] || { batch: k, date: b.date, start: b.start, end: b.end, codes: new Set(), qps: new Set(), rows: [] }).rows.push(b); if (b.code) acc[k].codes.add(b.code); if (b.qp) acc[k].qps.add(b.qp); if (b.date && (!acc[k].date || b.date < acc[k].date)) acc[k].date = b.date; return acc; }, {}))
         .map((w) => ({ ...w, counted: w.rows.filter((b) => b.person && b.person.totBatch === b).length, tcs: new Set(w.rows.filter((b) => b.person && b.person.centre).map((b) => b.person.centre.tc)).size,
           pass: w.rows.filter((b) => b.result === 'Pass').length, fail: w.rows.filter((b) => b.result === 'Fail' || b.result === 'Absent').length }))
